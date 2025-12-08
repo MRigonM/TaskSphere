@@ -9,13 +9,16 @@
     <ItemGroup>
       <Folder Include="DataTransferObjects\" />
       <Folder Include="Interfaces\" />
-      <Folder Include="Mappings\" />
       <Folder Include="Services\" />
       <Folder Include="Validators\" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\TaskSphere.Domain\TaskSphere.Domain.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="AutoMapper" Version="13.0.1" />
     </ItemGroup>
 
 </Project>

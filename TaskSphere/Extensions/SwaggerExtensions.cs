@@ -13,7 +13,7 @@ public static class SwaggerExtensions
         {
             c.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "EmployeeManagement API",
+                Title = "TaskSphere API",
                 Version = "v1"
             });
 
@@ -52,7 +52,7 @@ public static class SwaggerExtensions
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "EmployeeManagement API v1");
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaskSphere API v1");
             c.RoutePrefix = string.Empty;
         });
 

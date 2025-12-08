@@ -23,4 +23,16 @@
       <ProjectReference Include="..\TaskSphere.Infrastructure\TaskSphere.Infrastructure.csproj" />
     </ItemGroup>
 
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+
+        <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+        <PublishTrimmed>false</PublishTrimmed>
+        <PublishAot>false</PublishAot>
+    </PropertyGroup>
+
+
 </Project>

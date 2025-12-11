@@ -2,7 +2,6 @@ namespace TaskSphere.Domain.Entities;
 
 public class Project : BaseEntity<int>
 {
-    
     public string Name { get; set; } = "";
     public int CompanyId { get; set; }
     public Company? Company { get; set; }

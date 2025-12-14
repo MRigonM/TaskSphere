@@ -22,7 +22,7 @@ public static class SwaggerExtensions
                 Description = "JWT Authorization header using the Bearer scheme. \r\n\r\n Enter your token below prefixed with **Bearer**.",
                 Name = "Authorization",
                 In = ParameterLocation.Header,
-                Type = SecuritySchemeType.ApiKey,
+                Type = SecuritySchemeType.Http,
                 Scheme = "Bearer",
                 BearerFormat = "JWT"
             });

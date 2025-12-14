@@ -1,8 +1,6 @@
 ﻿using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
 namespace TaskSphere.Extensions;
@@ -32,7 +30,8 @@ public static class AuthenticationExtensions
                         Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!)
                     ),
                     RoleClaimType = ClaimTypes.Role,
-                    NameClaimType = ClaimTypes.NameIdentifier
+                    NameClaimType = ClaimTypes.NameIdentifier,
+                    ClockSkew = TimeSpan.FromMinutes(1)
                 };
             });
 

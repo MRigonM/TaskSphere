@@ -11,7 +11,6 @@
       <Folder Include="DataTransferObjects\Project\" />
       <Folder Include="DataTransferObjects\Sprint\" />
       <Folder Include="DataTransferObjects\Task\" />
-      <Folder Include="Validators\" />
     </ItemGroup>
 
     <ItemGroup>
@@ -20,6 +19,7 @@
 
     <ItemGroup>
       <PackageReference Include="AutoMapper" Version="13.0.1" />
+      <PackageReference Include="FluentValidation" Version="11.11.0" />
       <PackageReference Include="Microsoft.AspNetCore.Identity" Version="2.3.1" />
       <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
     </ItemGroup>

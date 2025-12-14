@@ -128,7 +128,7 @@ public class AccountService : IAccountService
         }
     }
     
-    public async Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, int companyId, CancellationToken ct = default)
+    public async Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, Guid companyId, CancellationToken ct = default)
     {
         try
         {

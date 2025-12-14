@@ -13,7 +13,7 @@ public class Task : BaseEntity<int>
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public int? ProjectId { get; set; }
     public Project? Project { get; set; }
-    public int CompanyId { get; set; }
+    public Guid CompanyId { get; set; }
     public Company? Company { get; set; }
     public int? StoryPoints { get; set; }
 }

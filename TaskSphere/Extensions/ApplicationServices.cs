@@ -1,9 +1,11 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using TaskSphere.Application.Interfaces;
+using TaskSphere.Application.Services;
 using TaskSphere.Domain.Entities.Identity;
+using TaskSphere.Domain.Interfaces;
 using TaskSphere.Infrastructure.Data;
+using TaskSphere.Infrastructure.Repositories;
 
 namespace TaskSphere.Extensions;
 
@@ -18,15 +20,25 @@ public static class ApplicationServices
 
         services.AddIdentity<AppUser, IdentityRole>(options =>
             {
-                options.SignIn.RequireConfirmedEmail = false;
-                options.Password.RequireDigit = false;
-                options.Password.RequireNonAlphanumeric = false;
-                options.Password.RequiredLength = 6;
+                options.Password.RequiredLength = 8;
+                options.Password.RequireUppercase = true;
+                options.Password.RequireDigit = true;
+                options.Password.RequireNonAlphanumeric = true;
+                options.Password.RequireLowercase = true;
             })
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();
 
         services.AddDataProtection();
+        
+        services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+        
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        
+        services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<ICompanyRepository, CompanyRepository>();
+
+        services.AddScoped<IAccountService, AccountService>();
         
         return services;
     }

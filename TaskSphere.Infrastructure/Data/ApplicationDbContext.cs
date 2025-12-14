@@ -41,6 +41,10 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
         {
             entity.HasQueryFilter(c => !c.IsDeleted);
 
+            entity.Property(c => c.Id)
+                .ValueGeneratedOnAdd()
+                .HasDefaultValueSql("NEWID()");
+
             entity.Property(c => c.Name)
                 .IsRequired()
                 .HasMaxLength(200);

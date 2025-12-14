@@ -8,6 +8,6 @@ public class Sprint : BaseEntity<int>
     public bool IsActive { get; set; } = true;
     public int? ProjectId { get; set; }
     public Project? Project { get; set; }
-    public int CompanyId { get; set; }
+    public Guid CompanyId { get; set; }
     public Company? Company { get; set; }
 }

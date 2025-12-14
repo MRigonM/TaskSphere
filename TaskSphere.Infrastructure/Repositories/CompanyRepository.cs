@@ -4,7 +4,7 @@ using TaskSphere.Infrastructure.Data;
 
 namespace TaskSphere.Infrastructure.Repositories;
 
-public class CompanyRepository: GenericRepository<Company, int>, ICompanyRepository
+public class CompanyRepository: GenericRepository<Company, Guid>, ICompanyRepository
 {
     private readonly ApplicationDbContext _context;
 

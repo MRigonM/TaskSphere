@@ -7,5 +7,5 @@ public interface IAccountService
 {
     Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default);
     Task<Result<string>> RegisterAsync(RegisterDto dto, CancellationToken cancellationToken = default);
-    Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, int companyId, CancellationToken ct = default);
+    Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, Guid companyId, CancellationToken ct = default);
 }

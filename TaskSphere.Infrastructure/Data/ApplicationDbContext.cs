@@ -27,11 +27,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
         {
             entity.HasQueryFilter(u => !u.IsDeleted);
 
-            entity.Property(u => u.FirstName)
-                .IsRequired()
-                .HasMaxLength(100);
-
-            entity.Property(u => u.LastName)
+            entity.Property(u => u.Name)
                 .IsRequired()
                 .HasMaxLength(100);
 

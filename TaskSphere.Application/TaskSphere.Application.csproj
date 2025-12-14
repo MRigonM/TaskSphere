@@ -7,9 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Folder Include="DataTransferObjects\" />
-      <Folder Include="Interfaces\" />
-      <Folder Include="Services\" />
+      <Folder Include="DataTransferObjects\Member\" />
+      <Folder Include="DataTransferObjects\Project\" />
+      <Folder Include="DataTransferObjects\Sprint\" />
+      <Folder Include="DataTransferObjects\Task\" />
       <Folder Include="Validators\" />
     </ItemGroup>
 

@@ -42,4 +42,37 @@ public class AccountController : ApiBaseController
         var result = await _accountService.CreateUserForCompanyAsync(dto, companyId, cancellationToken);
         return FromResult(result);
     }
+    
+    [Authorize(Roles = Roles.Company)]
+    [HttpGet("Users")]
+    public async Task<IActionResult> GetUsers([FromQuery] UserQueryDto query, CancellationToken ct)
+    {
+        if (!TryGetCompanyId(out var companyId))
+            return Unauthorized("Missing companyId claim.");
+
+        var result = await _accountService.GetUsersAsync(companyId, query, ct);
+        return FromResult(result);
+    }
+
+    [Authorize(Roles = Roles.Company)]
+    [HttpPut("Users/{userId}")]
+    public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto, CancellationToken ct)
+    {
+        if (!TryGetCompanyId(out var companyId))
+            return Unauthorized("Missing companyId claim.");
+
+        var result = await _accountService.UpdateUserAsync(companyId, userId, dto, ct);
+        return FromResult(result);
+    }
+
+    [Authorize(Roles = Roles.Company)]
+    [HttpDelete("Users/{userId}")]
+    public async Task<IActionResult> DeleteUser(string userId, CancellationToken ct)
+    {
+        if (!TryGetCompanyId(out var companyId))
+            return Unauthorized("Missing companyId claim.");
+
+        var result = await _accountService.DeleteUserAsync(companyId, userId, ct);
+        return FromResult(result);
+    }
 }

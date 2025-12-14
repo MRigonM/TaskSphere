@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -163,6 +164,133 @@ public class AccountService : IAccountService
             return Result<string>.Failure("Unexpected error during user creation.");
         }
     }
+    
+    public async Task<Result<IEnumerable<UserDto>>> GetUsersAsync(Guid companyId, UserQueryDto query, CancellationToken ct = default)
+    {
+        try
+        {
+            var q = _userManager.Users
+                .AsNoTracking()
+                .Where(u => u.CompanyId == companyId && !u.IsDeleted);
+
+            if (!string.IsNullOrWhiteSpace(query.Name))
+            {
+                var name = query.Name.Trim();
+                q = q.Where(u => u.Name.Contains(name));
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.Email))
+            {
+                var email = query.Email.Trim();
+                q = q.Where(u => (u.Email ?? "").Contains(email));
+            }
+
+            var page = query.Page < 1 ? 1 : query.Page;
+            var pageSize = query.PageSize is < 1 or > 100 ? 20 : query.PageSize;
+
+            var users = await q
+                .OrderBy(u => u.Name)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(u => new UserDto
+                {
+                    Id = u.Id,
+                    Name = u.Name,
+                    Email = u.Email ?? "",
+                    CompanyId = u.CompanyId,
+                    IsDeleted = u.IsDeleted
+                })
+                .ToListAsync(ct);
+
+            return Result<IEnumerable<UserDto>>.Success(users);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while retrieving users for company {CompanyId}", companyId);
+            return Result<IEnumerable<UserDto>>.Failure("Unexpected error while retrieving users.");
+        }
+    }
+
+    public async Task<Result<UserDto>> UpdateUserAsync(Guid companyId, string userId, UpdateUserDto dto, CancellationToken ct = default)
+    {
+        try
+        {
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId && !u.IsDeleted, ct);
+
+            if (user == null)
+                return Result<UserDto>.Failure("User not found.");
+
+            user.Name = dto.Name.Trim();
+            user.Email = dto.Email.Trim();
+
+            var update = await _userManager.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                var errors = string.Join(", ", update.Errors.Select(e => e.Description));
+                return Result<UserDto>.Failure($"Update failed: {errors}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.NewPassword) || !string.IsNullOrWhiteSpace(dto.ConfirmNewPassword))
+            {
+                if (dto.NewPassword != dto.ConfirmNewPassword)
+                    return Result<UserDto>.Failure("Passwords do not match.");
+
+                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                var reset = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword!);
+
+                if (!reset.Succeeded)
+                {
+                    var errors = string.Join(", ", reset.Errors.Select(e => e.Description));
+                    return Result<UserDto>.Failure($"Password update failed: {errors}");
+                }
+            }
+
+            return Result<UserDto>.Success(new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email ?? "",
+                CompanyId = user.CompanyId,
+                IsDeleted = user.IsDeleted
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while updating user {UserId} for company {CompanyId}", userId, companyId);
+            return Result<UserDto>.Failure("Unexpected error while updating user.");
+        }
+    }
+
+    public async Task<Result<string>> DeleteUserAsync(Guid companyId, string userId, CancellationToken ct = default)
+    {
+        try
+        {
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId && !u.IsDeleted, ct);
+
+            if (user == null)
+                return Result<string>.Failure("User not found.");
+
+            user.IsDeleted = true;
+            user.DeletedAt = DateTimeOffset.UtcNow;
+
+            var update = await _userManager.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                var errors = string.Join(", ", update.Errors.Select(e => e.Description));
+                return Result<string>.Failure($"Delete failed: {errors}");
+            }
+
+            return Result<string>.Success("User deleted successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while deleting user {UserId} for company {CompanyId}", userId, companyId);
+            return Result<string>.Failure("Unexpected error while deleting user.");
+        }
+    }
+
     
     private string GenerateJwtToken(AppUser user, string role)
     {

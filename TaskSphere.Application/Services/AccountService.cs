@@ -62,6 +62,7 @@ public class AccountService : IAccountService
                 Token = token,
                 UserId = user.Id,
                 Email = user.Email ?? string.Empty,
+                Name = user.Name,
                 Role = role,
                 CompanyId = user.CompanyId
             });

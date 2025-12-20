@@ -13,7 +13,9 @@ public class RegisterValidator  : AbstractValidator<RegisterDto>
 
         RuleFor(x => x.Email)
             .NotEmpty().WithMessage("Email is required")
-            .EmailAddress().WithMessage("Invalid email format");
+            .EmailAddress().WithMessage("Invalid email format")
+            .Matches(@".+\@.+\..{2,}$")
+            .WithMessage("Email must include a valid domain (e.g., name@example.com).");
 
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.")

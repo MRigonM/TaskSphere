@@ -1,0 +1,118 @@
+<div class="py-6">
+  <div class="grid items-center gap-10 lg:grid-cols-12">
+    <div class="lg:col-span-7">
+      <div
+        class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300"
+      >
+        <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+        Simple project + task management
+      </div>
+      <h1 class="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
+        Organize work,
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-300">
+          ship faster
+        </span>.
+      </h1>
+      <p class="mt-4 max-w-xl text-base text-slate-300">
+        TaskSphere helps teams create projects, run sprints, and manage tasks with clarity.
+        Clean UI, fast flows, and the essentials you actually need.
+      </p>
+      <div *ngIf="!auth.isLoggedIn()" class="mt-7 flex flex-wrap gap-3">
+        <a
+          routerLink="/account/register"
+          class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition"
+        >
+          Get started
+        </a>
+        <a
+          routerLink="/account/login"
+          class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 transition"
+        >
+          I already have an account
+        </a>
+      </div>
+      <div class="mt-8 flex flex-wrap gap-2 text-xs text-slate-400">
+        <span class="rounded-full bg-white/5 px-3 py-1 border border-white/10">Projects</span>
+        <span class="rounded-full bg-white/5 px-3 py-1 border border-white/10">Sprints</span>
+        <span class="rounded-full bg-white/5 px-3 py-1 border border-white/10">Tasks</span>
+        <span class="rounded-full bg-white/5 px-3 py-1 border border-white/10">Roles</span>
+      </div>
+    </div>
+    <div class="lg:col-span-5">
+      <div
+        class="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-5 shadow-sm"
+      >
+        <div
+          class="pointer-events-none absolute -top-24 -right-24 h-56 w-56 rounded-full bg-indigo-500/20 blur-3xl"
+        ></div>
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold">Today</div>
+            <div class="mt-1 text-xs text-slate-400">A quick preview of your workspace</div>
+          </div>
+          <span class="rounded-full bg-indigo-500/15 px-3 py-1 text-xs font-medium text-indigo-300">
+            Demo
+          </span>
+        </div>
+        <div class="mt-5 grid grid-cols-3 gap-2 text-xs">
+          <div class="rounded-2xl border border-white/10 bg-slate-950/30 p-3">
+            <div class="text-slate-400">Open</div>
+            <div class="mt-1 text-base font-semibold text-slate-100">8</div>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-slate-950/30 p-3">
+            <div class="text-slate-400">In review</div>
+            <div class="mt-1 text-base font-semibold text-slate-100">3</div>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-slate-950/30 p-3">
+            <div class="text-slate-400">Done</div>
+            <div class="mt-1 text-base font-semibold text-slate-100">21</div>
+          </div>
+        </div>
+        <div class="mt-4 rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium">Website Redesign</div>
+            <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
+              On Track
+            </span>
+          </div>
+          <div class="mt-3 h-2 w-full rounded-full bg-white/10">
+            <div class="h-2 w-[62%] rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400"></div>
+          </div>
+          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+            <span>Sprint 4</span>
+            <span>12 tasks</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <section class="mt-12 grid gap-4 md:grid-cols-3">
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:bg-white/10">
+      <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full bg-indigo-400"></span>
+        <div class="text-sm font-semibold">Clear workflow</div>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Projects → sprints → tasks. Keep it simple and scalable.
+      </p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:bg-white/10">
+      <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full bg-cyan-300"></span>
+        <div class="text-sm font-semibold">Role-based access</div>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Built to support users, companies, and controlled permissions.
+      </p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-5 transition hover:bg-white/10">
+      <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+        <div class="text-sm font-semibold">Fast UI</div>
+      </div>
+      <p class="mt-2 text-sm text-slate-300">
+        Tailwind-first layout that we can evolve into real screens.
+      </p>
+    </div>
+  </section>
+</div>

@@ -44,7 +44,7 @@ export class AccountApiService {
     return this.http.put<void>(`${this.base}Users/${userId}`, dto);
   }
 
-  deleteUser(userId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}Users/${userId}`);
+  deleteUser(userId: string): Observable<string> {
+    return this.http.delete(`${this.base}Users/${userId}`, {responseType: 'text'});
   }
 }

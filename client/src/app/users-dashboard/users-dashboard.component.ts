@@ -170,7 +170,7 @@ export class UsersDashboardComponent {
       const cpw = (this.userForm.value.confirmPassword ?? '').trim();
 
       if (pw.length < 6) {
-        this.error.set('Password must be at least 6 characters.');
+        this.error.set('Password must be at least 8 characters.');
         return;
       }
       if (pw !== cpw) {
@@ -214,7 +214,7 @@ export class UsersDashboardComponent {
 
     if (npw.length > 0 || cnpw.length > 0) {
       if (npw.length < 6) {
-        this.error.set('New password must be at least 6 characters.');
+        this.error.set('New password must be at least 8 characters.');
         return;
       }
       if (npw !== cnpw) {

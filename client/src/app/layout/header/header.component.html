@@ -21,23 +21,59 @@
       </ng-container>
 
       <ng-template #loggedIn>
-        <div class="flex items-center gap-3">
-          <div class="hidden sm:flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+        <div class="relative">
+          <button
+            type="button"
+            (click)="toggleMenu()"
+            class="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="menuOpen"
+          >
             <div class="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 text-slate-950 font-black grid place-items-center text-xs">
               {{ (name || 'U')[0] }}
             </div>
-            <div class="text-sm text-slate-200">
+
+            <div class="hidden sm:block text-sm text-slate-200">
               <span class="text-slate-400 mr-1">Hi,</span>{{ name || 'User' }}
             </div>
-            <span *ngIf="auth.isCompany()" class="ml-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-300">
-              Company
-            </span>
-          </div>
 
-          <button type="button" (click)="logout()" class="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 transition">
-            Logout
+            <span
+              *ngIf="auth.isCompany()"
+              class="hidden sm:inline ml-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-300"
+            >
+        Company
+      </span>
+
+            <svg class="ml-1 h-4 w-4 text-slate-300" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z" clip-rule="evenodd"/>
+            </svg>
           </button>
+          <div
+            *ngIf="menuOpen"
+            class="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl"
+            role="menu"
+          >
+            <a
+              *ngIf="auth.isCompany()"
+              routerLink="/dashboard/users"
+              (click)="closeMenu()"
+              class="block px-3 py-2 text-sm text-slate-200 hover:bg-white/5 transition"
+              role="menuitem"
+            >
+              Company dashboard
+            </a>
+
+            <button
+              type="button"
+              (click)="closeMenu(); logout()"
+              class="w-full text-left px-3 py-2 text-sm text-red-200 hover:bg-red-500/10 transition"
+              role="menuitem"
+            >
+              Logout
+            </button>
+          </div>
         </div>
+        <div *ngIf="menuOpen" class="fixed inset-0 z-[-1]" (click)="closeMenu()"></div>
       </ng-template>
     </div>
   </div>

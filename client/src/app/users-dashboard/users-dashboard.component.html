@@ -1,0 +1,258 @@
+﻿<div class="mx-auto max-w-6xl px-4 py-8">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-white">Users</h1>
+      <p class="text-sm text-white/60">Manage your company users</p>
+    </div>
+    <button
+      (click)="openCreate()"
+      class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition"
+    >
+      + Create user
+    </button>
+  </div>
+  <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+    <form class="grid gap-3 sm:grid-cols-3" [formGroup]="searchForm" (ngSubmit)="search()">
+      <label class="block">
+        <span class="text-xs text-white/60">Name</span>
+        <input
+          formControlName="name"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+          placeholder="Search by name..."
+        />
+      </label>
+      <label class="block">
+        <span class="text-xs text-white/60">Email</span>
+        <input
+          formControlName="email"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+          placeholder="Search by email..."
+        />
+      </label>
+      <div class="flex items-end gap-2">
+        <button
+          type="submit"
+          class="w-full rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition"
+        >
+          Search
+        </button>
+        <button
+          type="button"
+          (click)="clearSearch()"
+          class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
+        >
+          Clear
+        </button>
+      </div>
+    </form>
+    <div
+      *ngIf="error()"
+      class="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+    >
+      {{ error() }}
+    </div>
+  </div>
+  <div class="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+    <div class="flex flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="text-sm text-white/70">
+        <span *ngIf="loading()">Loading…</span>
+        <span *ngIf="!loading() && users().length === 0">No users found.</span>
+
+        <span *ngIf="!loading() && users().length > 0">
+      Showing {{ showingRange().start }}–{{ showingRange().end }} (page {{ page() }})
+    </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <select
+          class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none"
+          [value]="pageSize()"
+          (change)="onPageSizeChange(+$any($event.target).value)"
+          [disabled]="loading()"
+        >
+          <option *ngFor="let ps of pageSizeOptions" [value]="ps" class="bg-slate-800 text-white">
+            {{ ps }} / page
+          </option>
+        </select>
+        <button
+          (click)="prev()"
+          [disabled]="!canPrev() || loading()"
+          class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white disabled:opacity-40 hover:bg-white/10 transition"
+        >
+          Prev
+        </button>
+        <button
+          (click)="next()"
+          [disabled]="!canNext() || loading()"
+          class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white disabled:opacity-40 hover:bg-white/10 transition"
+        >
+          Next
+        </button>
+        <button
+          (click)="load()"
+          [disabled]="loading()"
+          class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white disabled:opacity-40 hover:bg-white/10 transition"
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-white/70">
+        <tr class="border-b border-white/10">
+          <th class="px-4 py-3 font-semibold">Name</th>
+          <th class="px-4 py-3 font-semibold">Email</th>
+          <th class="px-4 py-3 font-semibold">Status</th>
+          <th class="px-4 py-3 font-semibold text-right">Actions</th>
+        </tr>
+        </thead>
+        <tbody class="text-white">
+        <tr *ngFor="let u of users()" class="border-b border-white/5 last:border-b-0">
+          <td class="px-4 py-3">{{ u.name }}</td>
+          <td class="px-4 py-3 text-white/80">{{ u.email }}</td>
+
+          <td class="px-4 py-3">
+            <span
+                class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs"
+                [ngClass]="u.isDeleted
+                ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'"
+                  >
+              {{ u.isDeleted ? 'Deleted' : 'Active' }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-right">
+            <div class="inline-flex gap-2">
+              <button
+                (click)="openEdit(u)"
+                [disabled]="loading() || u.isDeleted"
+                class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 transition disabled:opacity-40"
+              >
+                Edit
+              </button>
+              <button
+                (click)="deleteUser(u)"
+                [disabled]="loading() || u.isDeleted"
+                class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-500/20 transition disabled:opacity-40"
+              >
+                Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div *ngIf="modalOpen()" class="fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/60" (click)="closeModal()"></div>
+    <div class="relative mx-auto mt-24 w-[92%] max-w-lg rounded-2xl border border-white/10 bg-slate-950 p-5 shadow-2xl">
+      <div class="flex items-start justify-between">
+        <div>
+          <h2 class="text-lg font-semibold text-white">{{ title() }}</h2>
+          <p class="text-sm text-white/60">
+            {{ modalMode() === 'create' ? 'Create a user for your company' : 'Update user details' }}
+          </p>
+        </div>
+        <button
+          (click)="closeModal()"
+          class="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10 transition"
+        >
+          ✕
+        </button>
+      </div>
+      <form class="mt-4 grid gap-3" [formGroup]="userForm" (ngSubmit)="submitModal()">
+        <label class="block">
+          <span class="text-xs text-white/60">Name</span>
+          <input
+            formControlName="name"
+            class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+            placeholder="Full name"
+          />
+          <div *ngIf="userForm.controls.name.touched && userForm.controls.name.invalid" class="mt-1 text-xs text-red-200">
+            Name is required (min 2 chars).
+          </div>
+        </label>
+        <label class="block">
+          <span class="text-xs text-white/60">Email</span>
+          <input
+            formControlName="email"
+            class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+            placeholder="email@company.com"
+          />
+          <div *ngIf="userForm.controls.email.touched && userForm.controls.email.invalid" class="mt-1 text-xs text-red-200">
+            Enter a valid email.
+          </div>
+        </label>
+        <div *ngIf="modalMode() === 'create'" class="grid gap-3">
+          <label class="block">
+            <span class="text-xs text-white/60">Password</span>
+            <input
+              type="password"
+              formControlName="password"
+              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+              placeholder="••••••••"
+            />
+          </label>
+          <label class="block">
+            <span class="text-xs text-white/60">Confirm password</span>
+            <input
+              type="password"
+              formControlName="confirmPassword"
+              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+              placeholder="••••••••"
+            />
+          </label>
+
+          <p class="text-xs text-white/50">
+            Password must be at least 6 characters.
+          </p>
+        </div>
+        <div *ngIf="modalMode() === 'edit'" class="grid gap-3">
+          <label class="block">
+            <span class="text-xs text-white/60">New password (optional)</span>
+            <input
+              type="password"
+              formControlName="newPassword"
+              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+              placeholder="Leave empty to keep current"
+            />
+          </label>
+          <label class="block">
+            <span class="text-xs text-white/60">Confirm new password</span>
+            <input
+              type="password"
+              formControlName="confirmNewPassword"
+              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+              placeholder="Confirm new password"
+            />
+          </label>
+          <p class="text-xs text-white/50">
+            If you fill new password, it must match confirm new password.
+          </p>
+        </div>
+
+        <div *ngIf="error()" class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {{ error() }}
+
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button
+            type="button"
+            (click)="closeModal()"
+            class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            [disabled]="loading()"
+            class="w-full rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50"
+          >
+            {{ modalMode() === 'create' ? 'Create' : 'Save changes' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

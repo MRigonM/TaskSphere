@@ -9,7 +9,7 @@ import {
   UserDto,
   UserQueryDto,
 } from '../models/account.models';
-import { Observable } from 'rxjs';
+import {map, Observable, tap} from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class AccountApiService {
@@ -26,7 +26,8 @@ export class AccountApiService {
   }
 
   createUser(dto: RegisterDto): Observable<void> {
-    return this.http.post<void>(`${this.base}CreateUser`, dto);
+    return this.http.post(`${this.base}CreateUser`, dto, { responseType: 'text' })
+      .pipe(tap(() => {}), map(() => void 0));
   }
 
   getUsers(query: UserQueryDto): Observable<UserDto[]> {

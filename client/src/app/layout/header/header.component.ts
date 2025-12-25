@@ -12,6 +12,7 @@ import {NgIf} from '@angular/common';
 })
 export class HeaderComponent {
   name: string | null = null;
+  menuOpen = false;
 
   constructor(public auth: AuthStoreService, private router: Router) {
     this.refreshName();
@@ -26,5 +27,13 @@ export class HeaderComponent {
     this.auth.clear();
     this.refreshName();
     this.router.navigateByUrl('/');
+  }
+
+  toggleMenu() {
+    this.menuOpen = !this.menuOpen;
+  }
+
+  closeMenu() {
+    this.menuOpen = false;
   }
 }

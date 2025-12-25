@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Application.DataTransferObjects.Identity;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Enums;
+using TaskSphere.Filters;
 
 namespace TaskSphere.Controllers;
 
@@ -32,14 +33,12 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
     
+    [RequireCompany]
     [Authorize(Roles = Roles.Company)]
     [HttpPost("CreateUser")]
     public async Task<IActionResult> CreateUser([FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
-        if (!TryGetCompanyId(out var companyId))
-            return Unauthorized("Missing companyId claim.");
-
-        var result = await _accountService.CreateUserForCompanyAsync(dto, companyId, cancellationToken);
+        var result = await _accountService.CreateUserForCompanyAsync(dto, CompanyId, cancellationToken);
         return FromResult(result);
     }
     
@@ -47,10 +46,7 @@ public class AccountController : ApiBaseController
     [HttpGet("Users")]
     public async Task<IActionResult> GetUsers([FromQuery] UserQueryDto query, CancellationToken ct)
     {
-        if (!TryGetCompanyId(out var companyId))
-            return Unauthorized("Missing companyId claim.");
-
-        var result = await _accountService.GetUsersAsync(companyId, query, ct);
+       var result = await _accountService.GetUsersAsync(CompanyId, query, ct);
         return FromResult(result);
     }
 
@@ -58,10 +54,7 @@ public class AccountController : ApiBaseController
     [HttpPut("Users/{userId}")]
     public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto, CancellationToken ct)
     {
-        if (!TryGetCompanyId(out var companyId))
-            return Unauthorized("Missing companyId claim.");
-
-        var result = await _accountService.UpdateUserAsync(companyId, userId, dto, ct);
+        var result = await _accountService.UpdateUserAsync(CompanyId, userId, dto, ct);
         return FromResult(result);
     }
 
@@ -69,10 +62,7 @@ public class AccountController : ApiBaseController
     [HttpDelete("Users/{userId}")]
     public async Task<IActionResult> DeleteUser(string userId, CancellationToken ct)
     {
-        if (!TryGetCompanyId(out var companyId))
-            return Unauthorized("Missing companyId claim.");
-
-        var result = await _accountService.DeleteUserAsync(companyId, userId, ct);
+        var result = await _accountService.DeleteUserAsync(CompanyId, userId, ct);
         return FromResult(result);
     }
 }

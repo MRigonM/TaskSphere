@@ -8,7 +8,6 @@
 
     <ItemGroup>
       <Folder Include="DataTransferObjects\Member\" />
-      <Folder Include="DataTransferObjects\Project\" />
       <Folder Include="DataTransferObjects\Sprint\" />
       <Folder Include="DataTransferObjects\Task\" />
     </ItemGroup>

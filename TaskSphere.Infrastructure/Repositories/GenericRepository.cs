@@ -5,7 +5,7 @@ using TaskSphere.Infrastructure.Data;
 
 namespace TaskSphere.Infrastructure.Repositories;
 
-public abstract class GenericRepository<TEntity, TKey> : IGenericRepository<TEntity, TKey> where TEntity : BaseEntity<TKey>
+public class GenericRepository<TEntity, TKey> : IGenericRepository<TEntity, TKey> where TEntity : BaseEntity<TKey>
 {
     private readonly ApplicationDbContext _context;
     private readonly DbSet<TEntity> _dbSet;

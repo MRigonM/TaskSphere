@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Domain.Common;
 
@@ -19,10 +18,8 @@ public class ApiBaseController : ControllerBase
         return BadRequest(result.Errors);
     }
     
-    protected bool TryGetCompanyId(out Guid companyId)
-    {
-        companyId = default;
-        var value = User.FindFirst("companyId")?.Value;
-        return Guid.TryParse(value, out companyId);
-    }
+    protected Guid CompanyId
+        => HttpContext.Items.TryGetValue("CompanyId", out var v) && v is Guid id
+            ? id
+            : throw new InvalidOperationException("CompanyId not set. Add [RequireCompany] on this controller/action.");
 }

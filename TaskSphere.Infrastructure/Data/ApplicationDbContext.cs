@@ -102,6 +102,12 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .WithMany()
                 .HasForeignKey(m => m.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(m => new
+                {
+                    m.ProjectId, m.UserId
+                })
+                .IsUnique();
         });
 
         modelBuilder.Entity<Sprint>(entity =>

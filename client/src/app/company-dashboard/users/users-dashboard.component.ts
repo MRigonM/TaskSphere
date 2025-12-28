@@ -3,11 +3,11 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
-import { AccountApiService } from '../core/services/account-api.service';
-import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../core/models/account.models';
+import { AccountApiService } from '../../core/services/account-api.service';
+import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/models/account.models';
 
 @Component({
-  selector: 'app-users-dashboard',
+  selector: 'app-company-dashboard',
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './users-dashboard.component.html',

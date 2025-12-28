@@ -79,8 +79,6 @@ export class UsersDashboardComponent {
         switchMap(() => this.account.getUsers(query)),
         tap((res) => this.users.set(res ?? [])),
         catchError((err) => {
-          console.log('GetUsers status:', err.status);
-          console.log('GetUsers body:', err.error);
           this.error.set(this.toMsg(err, 'Failed to load users.'));
           this.users.set([]);
           return of([]);

@@ -7,6 +7,7 @@ using TaskSphere.Filters;
 
 namespace TaskSphere.Controllers;
 
+[Route("api/[controller]")]
 public class AccountController : ApiBaseController
 {
     private readonly IAccountService _accountService;
@@ -15,11 +16,10 @@ public class AccountController : ApiBaseController
     {
         _accountService = accountService;
     }
-    
+
     [AllowAnonymous]
     [HttpPost("Register")]
-    public async Task<IActionResult> Register([FromBody] RegisterDto dto,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Register([FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountService.RegisterAsync(dto, cancellationToken);
         return FromResult(result);
@@ -32,25 +32,27 @@ public class AccountController : ApiBaseController
         var result = await _accountService.LoginAsync(dto, cancellationToken);
         return FromResult(result);
     }
-    
-    [RequireCompany]
+
     [Authorize(Roles = Roles.Company)]
+    [RequireCompany]
     [HttpPost("CreateUser")]
     public async Task<IActionResult> CreateUser([FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountService.CreateUserForCompanyAsync(dto, CompanyId, cancellationToken);
         return FromResult(result);
     }
-    
+
     [Authorize(Roles = Roles.Company)]
+    [RequireCompany]
     [HttpGet("Users")]
     public async Task<IActionResult> GetUsers([FromQuery] UserQueryDto query, CancellationToken ct)
     {
-       var result = await _accountService.GetUsersAsync(CompanyId, query, ct);
+        var result = await _accountService.GetUsersAsync(CompanyId, query, ct);
         return FromResult(result);
     }
 
     [Authorize(Roles = Roles.Company)]
+    [RequireCompany]
     [HttpPut("Users/{userId}")]
     public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto, CancellationToken ct)
     {
@@ -59,6 +61,7 @@ public class AccountController : ApiBaseController
     }
 
     [Authorize(Roles = Roles.Company)]
+    [RequireCompany]
     [HttpDelete("Users/{userId}")]
     public async Task<IActionResult> DeleteUser(string userId, CancellationToken ct)
     {

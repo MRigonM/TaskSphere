@@ -59,7 +59,7 @@
         <span *ngIf="!loading() && users().length === 0">No users found.</span>
 
         <span *ngIf="!loading() && users().length > 0">
-      Showing {{ showingRange().start }}–{{ showingRange().end }} (page {{ page() }})
+        Page : {{ page() }}
     </span>
       </div>
       <div class="flex items-center gap-2">

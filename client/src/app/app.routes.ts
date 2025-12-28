@@ -3,8 +3,9 @@ import { HomeComponent } from './home/home.component';
 import { LoginComponent } from './account/login/login.component';
 import { RegisterComponent } from './account/register/register.component';
 import { guestGuard } from './core/guards/guest.guard';
-import {UsersDashboardComponent} from './users-dashboard/users-dashboard.component';
+import {UsersDashboardComponent} from './company-dashboard/users/users-dashboard.component';
 import {companyGuard} from './core/guards/company.guard';
+import {ProjectComponent} from './company-dashboard/projects/projects.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -13,6 +14,11 @@ export const routes: Routes = [
   {
     path: 'dashboard/users',
     component: UsersDashboardComponent,
+    canActivate: [companyGuard],
+  },
+  {
+    path: 'dashboard/projects',
+    component: ProjectComponent,
     canActivate: [companyGuard],
   },
   { path: '**', redirectTo: '' },

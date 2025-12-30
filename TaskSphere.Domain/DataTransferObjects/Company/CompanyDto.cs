@@ -1,4 +1,4 @@
-namespace TaskSphere.Application.DataTransferObjects.Company;
+namespace TaskSphere.Domain.DataTransferObjects.Company;
 
 public class CompanyDto
 {

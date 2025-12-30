@@ -1,4 +1,4 @@
-namespace TaskSphere.Application.DataTransferObjects.Identity;
+namespace TaskSphere.Domain.DataTransferObjects.Identity;
 
 public class AuthResponseDto
 {

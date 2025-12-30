@@ -1,9 +1,9 @@
 namespace TaskSphere.Domain.Enums;
 
-public enum TicketStatus
+public static class TaskStatuses
 {
-    Open = 0,
-    InProgress = 1,
-    Done = 2,
-    Closed = 3
+    public const string Open = "Open";
+    public const string InProgress = "InProgress";
+    public const string Blocked = "Blocked";
+    public const string Done = "Done";
 }

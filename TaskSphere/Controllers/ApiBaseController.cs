@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Domain.Common;
 
@@ -22,4 +23,8 @@ public class ApiBaseController : ControllerBase
         => HttpContext.Items.TryGetValue("CompanyId", out var v) && v is Guid id
             ? id
             : throw new InvalidOperationException("CompanyId not set. Add [RequireCompany] on this controller/action.");
+    
+    protected string UserId
+        => User.FindFirstValue(ClaimTypes.NameIdentifier)
+           ?? throw new InvalidOperationException("UserId claim not found.");
 }

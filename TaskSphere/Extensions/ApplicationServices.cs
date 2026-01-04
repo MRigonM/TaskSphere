@@ -56,6 +56,8 @@ public static class ApplicationServices
         services.AddScoped<IMemberRepository, MemberRepository>();
         services.AddScoped<ISprintService, SprintService>();
         services.AddScoped<ISprintRepository, SprintRepository>();
+        services.AddScoped<ITaskRepository, TaskRepository>();
+        services.AddScoped<ITaskService, TaskService>();
         
         return services;
     }

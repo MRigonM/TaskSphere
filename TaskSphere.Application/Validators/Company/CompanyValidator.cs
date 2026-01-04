@@ -1,5 +1,5 @@
 using FluentValidation;
-using TaskSphere.Application.DataTransferObjects.Company;
+using TaskSphere.Domain.DataTransferObjects.Company;
 
 namespace TaskSphere.Application.Validators.Company;
 

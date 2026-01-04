@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TaskSphere.Application.DataTransferObjects.Project;
 using TaskSphere.Application.Interfaces;
+using TaskSphere.Domain.DataTransferObjects.Project;
 using TaskSphere.Domain.Enums;
 using TaskSphere.Filters;
 

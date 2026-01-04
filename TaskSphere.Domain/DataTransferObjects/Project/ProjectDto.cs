@@ -1,4 +1,4 @@
-namespace TaskSphere.Application.DataTransferObjects.Project;
+namespace TaskSphere.Domain.DataTransferObjects.Project;
 
 public record CreateProjectDto(string Name);
 

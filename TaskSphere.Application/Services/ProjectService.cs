@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using TaskSphere.Application.DataTransferObjects.Project;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
+using TaskSphere.Domain.DataTransferObjects.Project;
 using TaskSphere.Domain.Entities;
 using TaskSphere.Domain.Entities.Identity;
 using TaskSphere.Domain.Interfaces;

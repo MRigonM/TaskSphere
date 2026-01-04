@@ -1,5 +1,5 @@
-using TaskSphere.Application.DataTransferObjects.Identity;
 using TaskSphere.Domain.Common;
+using TaskSphere.Domain.DataTransferObjects.Identity;
 
 namespace TaskSphere.Application.Interfaces;
 

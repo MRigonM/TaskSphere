@@ -1,8 +1,8 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
-using TaskSphere.Application.DataTransferObjects.Company;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
+using TaskSphere.Domain.DataTransferObjects.Company;
 using TaskSphere.Domain.Entities;
 using TaskSphere.Domain.Interfaces;
 

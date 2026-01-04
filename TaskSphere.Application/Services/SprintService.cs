@@ -37,10 +37,6 @@ public class SprintService : ISprintService
 
     public async Task<Result<SprintDto>> CreateAsync(Guid companyId, CreateSprintDto dto, CancellationToken ct)
     {
-        var validation = ValidateSprintDates(dto.StartDate, dto.EndDate);
-        if (validation is not null)
-            return Result<SprintDto>.Failure(validation);
-
         var sprint = _mapper.Map<Sprint>(dto);
         sprint.Name = sprint.Name.Trim();
         sprint.CompanyId = companyId;
@@ -53,25 +49,18 @@ public class SprintService : ISprintService
                 deactivateOtherSprintsInProject: true,
                 ct
             );
-
-            await _unitOfWork.SaveChangesAsync(ct);
         }
         else
         {
             await _sprintRepository.AddAsync(sprint, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
         }
 
+        await _unitOfWork.SaveChangesAsync(ct);
         return Result<SprintDto>.Success(_mapper.Map<SprintDto>(sprint));
     }
 
-    public async Task<Result<SprintDto>> UpdateAsync(Guid companyId, int sprintId, UpdateSprintDto dto,
-        CancellationToken ct)
+    public async Task<Result<SprintDto>> UpdateAsync(Guid companyId, int sprintId, UpdateSprintDto dto, CancellationToken ct)
     {
-        var validation = ValidateSprintDates(dto.StartDate, dto.EndDate);
-        if (validation is not null)
-            return Result<SprintDto>.Failure(validation);
-
         var sprint = await _sprintRepository.GetByIdAsync(sprintId, ct);
         if (sprint == null || sprint.CompanyId != companyId)
             return Result<SprintDto>.Failure("Sprint not found.");

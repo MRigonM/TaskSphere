@@ -12,8 +12,8 @@ using TaskSphere.Infrastructure.Data;
 namespace TaskSphere.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251225185936_AddSoftDeleteToMember")]
-    partial class AddSoftDeleteToMember
+    [Migration("20260108190157_ChangeTaskStatus")]
+    partial class ChangeTaskStatus
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -401,8 +401,8 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Property<int?>("ProjectId")
                         .HasColumnType("int");
 
-                    b.Property<string>("SprintId")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int?>("SprintId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -424,6 +424,8 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.HasIndex("CompanyId");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("SprintId");
 
                     b.ToTable("Tasks");
                 });
@@ -550,9 +552,15 @@ namespace TaskSphere.Infrastructure.Migrations
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("TaskSphere.Domain.Entities.Sprint", "Sprint")
+                        .WithMany()
+                        .HasForeignKey("SprintId");
+
                     b.Navigation("Company");
 
                     b.Navigation("Project");
+
+                    b.Navigation("Sprint");
                 });
 
             modelBuilder.Entity("TaskSphere.Domain.Entities.Company", b =>

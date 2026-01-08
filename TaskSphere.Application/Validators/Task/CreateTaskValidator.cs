@@ -5,7 +5,7 @@ namespace TaskSphere.Application.Validators.Task;
 
 public class CreateTaskValidator : AbstractValidator<CreateTaskDto>
 {
-    private static readonly string[] AllowedStatuses = { "ToDo", "InProgress", "Blocked", "Done" };
+    private static readonly string[] AllowedStatuses = { "Open", "InProgress", "Blocked", "Done" };
     private static readonly string[] AllowedPriorities = { "Low", "Medium", "High", "Critical" };
 
     public CreateTaskValidator()

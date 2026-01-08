@@ -406,7 +406,7 @@ namespace TaskSphere.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("ToDo");
+                        .HasDefaultValue("Open");
 
                     b.Property<int?>("StoryPoints")
                         .HasColumnType("int");

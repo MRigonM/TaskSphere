@@ -9,6 +9,7 @@ import { SprintDto } from '../core/models/sprints.models';
 import {CommonModule} from '@angular/common';
 import { AccountApiService } from '../core/services/account-api.service';
 import { UserDto, UserQueryDto } from '../core/models/account.models';
+import {TaskCardComponent} from '../components/tasks/task-card.component';
 
 
 @Component({
@@ -16,7 +17,8 @@ import { UserDto, UserQueryDto } from '../core/models/account.models';
   templateUrl: './tasks-page.component.html',
   imports: [
     CommonModule,
-    ReactiveFormsModule
+    ReactiveFormsModule,
+    TaskCardComponent
   ]
 })
 export class TasksPageComponent {

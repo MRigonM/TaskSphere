@@ -16,11 +16,9 @@
          (cdkDragStarted)="onDragStarted()" (cdkDragEnded)="onDragEnded()">
     <app-board-task-card
         [t]="t"
-        [statuses]="statuses"
         [users]="users"
         [taskTitle]="taskTitle"
         [taskStatus]="taskStatus"
-        (statusChange)="statusChange.emit($event)"
         (assigneeChange)="assigneeChange.emit($event)"
       ></app-board-task-card>
     </div>

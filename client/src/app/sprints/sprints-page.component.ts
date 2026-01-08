@@ -1,7 +1,7 @@
 ﻿import { Component } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
-import { finalize, of, switchMap, tap, catchError } from 'rxjs';
+import { finalize, of, switchMap, tap, catchError, map } from 'rxjs';
 import { signal } from '@angular/core';
 
 import { SprintsApiService } from '../core/services/sprints-api.service';
@@ -118,12 +118,6 @@ export class SprintsPageComponent {
     ).subscribe();
   }
 
-  assigneeName(userId: string | null | undefined): string {
-    if (!userId) return 'Unassigned';
-    const u = this.users().find(x => x.id === userId);
-    return u ? u.name : 'Unassigned';
-  }
-
   taskStatus(t: any): string {
     return (t?.status ?? 'Open').toString();
   }
@@ -147,7 +141,7 @@ export class SprintsPageComponent {
 
     of(null).pipe(
       switchMap(() => this.tasksApi.setStatus(id, status)),
-      switchMap(() => this.api.board(s.id)),
+      switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to set task status.'));
@@ -157,22 +151,21 @@ export class SprintsPageComponent {
     ).subscribe();
   }
 
-  assignFromBoard(t: any, assigneeUserId: string) {
+  assignFromBoard(t: any, assigneeUserId: string | null) {
     const s = this.selectedSprint();
     if (!s) return;
 
     const id = this.taskId(t);
     if (!id) return;
-    tap(() => this.loadBoard());
 
-    const value = assigneeUserId ? assigneeUserId : null;
+    const value = assigneeUserId ? assigneeUserId.toLowerCase() : null;
 
     this.loading.set(true);
     this.error.set(null);
 
     of(null).pipe(
       switchMap(() => this.tasksApi.assign(id, value)),
-      switchMap(() => this.api.board(s.id)),
+      switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to assign task.'));
@@ -180,6 +173,40 @@ export class SprintsPageComponent {
       }),
       finalize(() => this.loading.set(false))
     ).subscribe();
+  }
+
+  private loadBoardMerged$(sprintId: number) {
+    return this.api.board(sprintId).pipe(
+      switchMap((b) =>
+        this.tasksApi.getBySprint(sprintId).pipe(
+          map((tasks) => {
+            if (!b) return b;
+
+            const assigneeMap = new Map<number, string | null>();
+            (tasks ?? []).forEach(t =>
+              assigneeMap.set(Number(t.id), t.assigneeUserId != null ? String(t.assigneeUserId) : null)
+            );
+
+            const merge = (arr: any[]) =>
+              (arr ?? []).map(x => {
+                const key = Number(this.taskId(x) ?? x.id);
+                return {
+                  ...x,
+                  assigneeUserId: assigneeMap.get(key) ?? null,
+                };
+              });
+
+            return {
+              ...b,
+              open: merge(b.open),
+              inProgress: merge(b.inProgress),
+              blocked: merge(b.blocked),
+              done: merge(b.done),
+            };
+          })
+        )
+      )
+    );
   }
 
   loadBoard() {
@@ -190,32 +217,8 @@ export class SprintsPageComponent {
     this.error.set(null);
 
     of(null).pipe(
-      switchMap(() => this.api.board(s.id)),
+      switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
-
-      switchMap(() => this.tasksApi.getBySprint(s.id)),
-      tap((tasks) => {
-        const b = this.board();
-        if (!b) return;
-
-        const assigneeMap = new Map<number, string | null>();
-        (tasks ?? []).forEach(t => assigneeMap.set(t.id, t.assigneeUserId ?? null));
-
-        const merge = (arr: any[]) =>
-          (arr ?? []).map(x => ({
-            ...x,
-            assigneeUserId: assigneeMap.get(x.id) ?? x.assigneeUserId ?? null,
-          }));
-
-        this.board.set({
-          ...b,
-          open: merge(b.open),
-          inProgress: merge(b.inProgress),
-          blocked: merge(b.blocked),
-          done: merge(b.done),
-        });
-      }),
-
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to load sprint board.'));
         this.board.set(null);
@@ -224,7 +227,6 @@ export class SprintsPageComponent {
       finalize(() => this.loading.set(false))
     ).subscribe();
   }
-
 
   openCreate() {
     this.showCreate.set(true);
@@ -265,9 +267,6 @@ export class SprintsPageComponent {
 
     of(null).pipe(
       switchMap(() => this.api.create(dto)),
-      tap((created) => {
-        this.showCreate.set(false);
-      }),
       switchMap(() => this.api.getByProject(pid)),
       tap((list) => {
         const s = list ?? [];
@@ -341,7 +340,7 @@ export class SprintsPageComponent {
       }),
       switchMap(() => {
         const sel = this.selectedSprint();
-        return sel ? this.api.board(sel.id) : of(null);
+        return sel ? this.loadBoardMerged$(sel.id) : of(null);
       }),
       tap((b) => this.board.set(b)),
       catchError((err) => {
@@ -401,7 +400,7 @@ export class SprintsPageComponent {
         const updated = arr.find(x => x.id === s.id) ?? null;
         if (updated) this.selectedSprint.set(updated);
       }),
-      switchMap(() => this.api.board(s.id)),
+      switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to activate sprint.'));

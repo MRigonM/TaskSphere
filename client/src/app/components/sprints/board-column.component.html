@@ -1,0 +1,30 @@
+﻿<div class="rounded-2xl border border-white/10 bg-white/5 p-4 overflow-hidden h-full flex flex-col">
+  <div class="mb-3 flex items-center justify-between">
+    <div class="font-semibold">{{ title }}</div>
+    <div class="text-xs text-slate-400">{{ tasks.length }}</div>
+  </div>
+
+  <div
+    class="board-dropzone flex-1 overflow-hidden"
+    cdkDropList
+    [id]="listId"
+    [cdkDropListData]="tasks"
+    [cdkDropListConnectedTo]="connectedTo"
+    (cdkDropListDropped)="onDrop($event)"
+  >
+    <div *ngFor="let t of tasks; trackBy: trackByTask" cdkDrag [cdkDragData]="t"
+         (cdkDragStarted)="onDragStarted()" (cdkDragEnded)="onDragEnded()">
+    <app-board-task-card
+        [t]="t"
+        [statuses]="statuses"
+        [users]="users"
+        [taskTitle]="taskTitle"
+        [taskStatus]="taskStatus"
+        (statusChange)="statusChange.emit($event)"
+        (assigneeChange)="assigneeChange.emit($event)"
+      ></app-board-task-card>
+    </div>
+
+    <div *ngIf="!(tasks.length)" class="text-sm text-slate-400"></div>
+  </div>
+</div>

@@ -1,3 +1,42 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import "tailwindcss";
+
+cdk-drag-preview {
+  overflow: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.cdk-drag-preview::-webkit-scrollbar {
+  display: none;
+}
+
+.cdk-drag-placeholder {
+  opacity: 0;
+}
+.cdk-drag-preview {
+  color: rgb(226 232 240) !important;
+}
+
+.cdk-drag-preview * {
+  color: inherit !important;
+}
+
+body.cdk-dragging,
+body.cdk-drop-list-dragging {
+  overflow: hidden !important;
+}
+
+.cdk-drag-animating {
+  transition: none !important;
+}
+
+html {
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+}
+
+body {
+  overflow-y: scroll;
+}

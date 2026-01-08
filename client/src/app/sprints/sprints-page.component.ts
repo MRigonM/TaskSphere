@@ -10,6 +10,8 @@ import {CommonModule, DatePipe} from '@angular/common';
 import {UserDto, UserQueryDto} from '../core/models/account.models';
 import {AccountApiService} from '../core/services/account-api.service';
 import {TasksApiService} from '../core/services/tasks-api.service';
+import {BoardColumnComponent} from '../components/sprints/board-column.component';
+import {CdkDragDrop, moveItemInArray, transferArrayItem} from '@angular/cdk/drag-drop';
 
 @Component({
   selector: 'app-sprints-page',
@@ -17,7 +19,8 @@ import {TasksApiService} from '../core/services/tasks-api.service';
   imports: [
     CommonModule,
     DatePipe,
-    ReactiveFormsModule
+    ReactiveFormsModule,
+    BoardColumnComponent
   ]
 })
 export class SprintsPageComponent {
@@ -432,4 +435,32 @@ export class SprintsPageComponent {
     if (err?.status === 0) return 'API unreachable / CORS error.';
     return fallback;
   }
+
+  onBoardDrop(ev: CdkDragDrop<any[]>) {
+    if (ev.previousContainer === ev.container) {
+      moveItemInArray(ev.container.data, ev.previousIndex, ev.currentIndex);
+      return;
+    }
+
+    transferArrayItem(
+      ev.previousContainer.data,
+      ev.container.data,
+      ev.previousIndex,
+      ev.currentIndex
+    );
+
+    const map: Record<string, string> = {
+      open: 'Open',
+      inProgress: 'InProgress',
+      blocked: 'Blocked',
+      done: 'Done',
+    };
+
+    const task = ev.item.data;
+    const newStatus = map[ev.container.id];
+    if (newStatus) {
+      this.setTaskStatusFromBoard(task, newStatus);
+    }
+  }
+
 }

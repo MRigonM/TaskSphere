@@ -22,7 +22,8 @@
   <div *ngIf="error()" class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
     {{ error() }}
   </div>
-  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+  <div *ngIf="isCompanyAdmin()"
+    class="rounded-2xl border border-white/10 bg-white/5 p-4">
     <div class="text-sm text-slate-300 mb-2">Sprints</div>
     <div class="flex flex-wrap gap-2">
       <button
@@ -46,56 +47,13 @@
       <button class="text-sm text-slate-300 hover:text-white" (click)="cancelCreate()">Close</button>
     </div>
     <form [formGroup]="createForm" (ngSubmit)="submitCreate()" class="grid gap-3 md:grid-cols-6">
-      <div class="md:col-span-3">
+      <div class="md:col-span-4">
         <label class="text-xs text-slate-400">Title</label>
         <input
           formControlName="title"
           class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
           placeholder="Implement login"
         />
-      </div>
-      <div class="md:col-span-2">
-        <label class="text-xs text-slate-400">Status</label>
-        <select
-          formControlName="status"
-          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-        >
-          <option *ngFor="let st of statuses" [value]="st">{{ st }}</option>
-        </select>
-      </div>
-      <div>
-        <label class="text-xs text-slate-400">Story Points</label>
-        <input
-          formControlName="storyPoints"
-          type="number"
-          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-        />
-      </div>
-      <div class="md:col-span-6">
-        <label class="text-xs text-slate-400">Description</label>
-        <textarea
-          formControlName="description"
-          rows="3"
-          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-        ></textarea>
-      </div>
-      <div class="md:col-span-2">
-        <label class="text-xs text-slate-400">Priority</label>
-        <input
-          formControlName="priority"
-          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-          placeholder="Low / Medium / High"
-        />
-      </div>
-      <div class="md:col-span-2">
-        <label class="text-xs text-slate-400">Sprint</label>
-        <select
-          formControlName="sprintId"
-          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-        >
-          <option value="">Backlog</option>
-          <option *ngFor="let s of sprints()" [value]="s.id">{{ s.name }}</option>
-        </select>
       </div>
       <div class="md:col-span-2">
         <label class="text-xs text-slate-400">Assignee</label>
@@ -109,7 +67,45 @@
           </option>
         </select>
       </div>
-      <div class="md:col-span-6 flex justify-end">
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Priority</label>
+        <select
+          formControlName="priority"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Story Points</label>
+        <input
+          formControlName="storyPoints"
+          type="number"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Sprint</label>
+        <select
+          formControlName="sprintId"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="">Backlog</option>
+          <option *ngFor="let s of visibleSprints()" [value]="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="md:col-span-6">
+        <label class="text-xs text-slate-400">Description</label>
+        <textarea
+          formControlName="description"
+          rows="3"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        ></textarea>
+      </div>
+      <div class="md:col-span-6 flex justify-end pt-1">
         <button
           type="submit"
           [disabled]="loading() || createForm.invalid"
@@ -248,5 +244,4 @@
       </div>
     </div>
   </div>
-  <div *ngIf="loading()" class="text-sm text-slate-400">Loading…</div>
 </div>

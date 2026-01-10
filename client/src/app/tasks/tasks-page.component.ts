@@ -10,6 +10,7 @@ import {CommonModule} from '@angular/common';
 import { AccountApiService } from '../core/services/account-api.service';
 import { UserDto, UserQueryDto } from '../core/models/account.models';
 import {TaskCardComponent} from '../components/tasks/task-card.component';
+import {AuthStoreService} from '../core/services/auth-store.service';
 
 
 @Component({
@@ -46,7 +47,8 @@ export class TasksPageComponent {
     private fb: FormBuilder,
     private tasksApi: TasksApiService,
     private sprintsApi: SprintsApiService,
-    private accountApi: AccountApiService
+    private accountApi: AccountApiService,
+    private auth: AuthStoreService
   ) {
     this.createForm = this.fb.group({
       title: ['', [Validators.required]],
@@ -73,6 +75,10 @@ export class TasksPageComponent {
     const pid = Number(this.route.snapshot.paramMap.get('projectId') ?? 0);
     this.projectId.set(pid);
     this.reloadAll();
+  }
+
+  isCompanyAdmin(): boolean {
+    return this.auth.isCompany();
   }
 
   reloadAll() {
@@ -210,11 +216,18 @@ export class TasksPageComponent {
       title: '',
       description: '',
       status: 'Open',
-      priority: '',
+      priority: 'Low',
       storyPoints: '',
       sprintId: s ? String(s.id) : '',
       assigneeUserId: '',
     });
+  }
+
+  visibleSprints() {
+    const all = this.sprints() ?? [];
+    return this.isCompanyAdmin()
+      ? all
+      : all.filter(s => s.isActive);
   }
 
   cancelCreate() {

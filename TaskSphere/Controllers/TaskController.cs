@@ -7,7 +7,7 @@ using TaskSphere.Filters;
 
 namespace TaskSphere.Controllers;
 
-[Authorize(Roles = Roles.Company)]
+[Authorize(Roles = Roles.CompanyOrUser)]
 [RequireCompany]
 [Route("api/[controller]")]
 public class TasksController : ApiBaseController

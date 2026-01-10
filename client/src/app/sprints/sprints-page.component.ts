@@ -12,6 +12,7 @@ import {AccountApiService} from '../core/services/account-api.service';
 import {TasksApiService} from '../core/services/tasks-api.service';
 import {BoardColumnComponent} from '../components/sprints/board-column.component';
 import {CdkDragDrop, moveItemInArray, transferArrayItem} from '@angular/cdk/drag-drop';
+import {AuthStoreService} from '../core/services/auth-store.service';
 
 @Component({
   selector: 'app-sprints-page',
@@ -47,7 +48,8 @@ export class SprintsPageComponent {
     private fb: FormBuilder,
     private api: SprintsApiService,
     private accountApi: AccountApiService,
-    private tasksApi: TasksApiService
+    private tasksApi: TasksApiService,
+    private auth: AuthStoreService
   ) {
     this.createForm = this.fb.group({
       name: ['', [Validators.required]],
@@ -68,6 +70,10 @@ export class SprintsPageComponent {
     this.projectId.set(pid);
     this.loadUsers();
     this.loadSprints(true);
+  }
+
+  isCompanyAdmin(): boolean {
+    return this.auth.isCompany();
   }
 
   loadSprints(selectActiveIfPossible: boolean) {

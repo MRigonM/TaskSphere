@@ -42,7 +42,7 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
-    [Authorize(Roles = Roles.Company)]
+    [Authorize(Roles = Roles.CompanyOrUser)]
     [RequireCompany]
     [HttpGet("Users")]
     public async Task<IActionResult> GetUsers([FromQuery] UserQueryDto query, CancellationToken ct)

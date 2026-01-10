@@ -1,11 +1,11 @@
 ﻿import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { NgFor, NgIf } from '@angular/common';
+import {CommonModule, NgFor, NgIf} from '@angular/common';
 import {TaskDto} from '../../core/models/tasks.models';
 
 @Component({
   selector: 'app-task-card',
   standalone: true,
-  imports: [NgFor, NgIf],
+  imports: [NgFor, NgIf,CommonModule],
   templateUrl: './task-card.component.html',
 })
 export class TaskCardComponent {

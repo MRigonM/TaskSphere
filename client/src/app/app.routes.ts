@@ -8,6 +8,7 @@ import {companyGuard} from './core/guards/company.guard';
 import {ProjectComponent} from './company-dashboard/projects/projects.component';
 import {SprintsPageComponent} from './sprints/sprints-page.component';
 import {TasksPageComponent} from './tasks/tasks-page.component';
+import {companyMemberGuard} from './core/guards/company-member.guard';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -26,12 +27,12 @@ export const routes: Routes = [
   {
     path: 'sprints/:projectId',
     component: SprintsPageComponent,
-    canActivate: [companyGuard]
+    canActivate: [companyMemberGuard]
   },
   {
     path: 'tasks/:projectId',
     component: TasksPageComponent,
-    canActivate: [companyGuard],
+    canActivate: [companyMemberGuard],
   },
   { path: '**', redirectTo: '' },
 ];

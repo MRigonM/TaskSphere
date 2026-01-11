@@ -18,11 +18,16 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
         _context = context;
     }
 
-    public async Task<List<Sprint>> GetByProjectAsync(int projectId, Guid companyId, CancellationToken ct)
+    public async Task<List<Sprint>> GetByProjectAsync(int projectId, Guid companyId, bool includeArchived, CancellationToken ct)
     {
-        return await _context.Set<Sprint>()
+        var q = _context.Set<Sprint>()
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && s.ProjectId == projectId)
+            .Where(s => s.CompanyId == companyId && s.ProjectId == projectId);
+
+        if (!includeArchived)
+            q = q.Where(s => !s.IsArchived);
+
+        return await q
             .OrderByDescending(s => s.IsActive)
             .ThenByDescending(s => s.StartDate)
             .ToListAsync(ct);
@@ -180,4 +185,7 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
                 .SetProperty(x => x.SprintId, sprintId)
                 .SetProperty(x => x.Status, TaskStatuses.InProgress), ct);
     }
+    public Task<Sprint?> GetByCompanyAsync(Guid companyId, int sprintId, CancellationToken ct) =>
+        _context.Set<Sprint>().FirstOrDefaultAsync(s => s.Id == sprintId && s.CompanyId == companyId, ct);
+
 }

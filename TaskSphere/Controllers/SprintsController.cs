@@ -20,9 +20,9 @@ public class SprintsController : ApiBaseController
     }
 
     [HttpGet("project/{projectId:int}")]
-    public async Task<IActionResult> GetByProject(int projectId, CancellationToken ct)
+    public async Task<IActionResult> GetByProject(int projectId, [FromQuery] bool includeArchived = false, CancellationToken ct = default)
     {
-        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, ct);
+        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, includeArchived, ct);
         return FromResult(result);
     }
 
@@ -77,6 +77,14 @@ public class SprintsController : ApiBaseController
     public async Task<IActionResult> MoveTaskToActive(int sprintId, int taskId, CancellationToken ct)
     {
         var result = await _sprintService.MoveTaskToActiveAsync(CompanyId, sprintId, taskId, ct);
+        return FromResult(result);
+    }
+    
+    [Authorize(Roles = Roles.Company)]
+    [HttpPatch("{sprintId:int}/archive")]
+    public async Task<IActionResult> Archive(int sprintId, [FromQuery] bool isArchived = true, CancellationToken ct = default)
+    {
+        var result = await _sprintService.SetArchivedAsync(CompanyId, sprintId, isArchived, ct);
         return FromResult(result);
     }
 }

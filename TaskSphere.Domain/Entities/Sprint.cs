@@ -6,6 +6,7 @@ public class Sprint : BaseEntity<int>
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsArchived { get; set; } 
     public int? ProjectId { get; set; }
     public Project? Project { get; set; }
     public Guid CompanyId { get; set; }

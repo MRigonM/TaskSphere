@@ -39,6 +39,10 @@ export interface SprintBoardDto {
   sprintId: number;
   sprintName: string;
   projectId: number | null;
+  low: TaskEntityDto[];
+  medium: TaskEntityDto[];
+  high: TaskEntityDto[];
+  critical: TaskEntityDto[];
   open: TaskEntityDto[];
   inProgress: TaskEntityDto[];
   blocked: TaskEntityDto[];

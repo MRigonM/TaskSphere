@@ -13,6 +13,8 @@ import {TasksApiService} from '../core/services/tasks-api.service';
 import {BoardColumnComponent} from '../components/sprints/board-column.component';
 import {CdkDragDrop, moveItemInArray, transferArrayItem} from '@angular/cdk/drag-drop';
 import {AuthStoreService} from '../core/services/auth-store.service';
+import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
+import {MemberDto} from '../core/models/projects.models';
 
 @Component({
   selector: 'app-sprints-page',
@@ -28,8 +30,10 @@ export class SprintsPageComponent {
   loading = signal(false);
   error = signal<string | null>(null);
   users = signal<UserDto[]>([]);
+  members = signal<MemberDto[]>([]);
   statuses = ['Open', 'InProgress', 'Blocked', 'Done'];
   projectId = signal<number>(0);
+  projectName = signal<string>('');
 
   sprints = signal<SprintDto[]>([]);
   selectedSprint = signal<SprintDto | null>(null);
@@ -49,7 +53,8 @@ export class SprintsPageComponent {
     private api: SprintsApiService,
     private accountApi: AccountApiService,
     private tasksApi: TasksApiService,
-    private auth: AuthStoreService
+    private auth: AuthStoreService,
+    private projectsApi: ProjectsApiService,
   ) {
     this.createForm = this.fb.group({
       name: ['', [Validators.required]],
@@ -66,9 +71,21 @@ export class SprintsPageComponent {
   }
 
   ngOnInit() {
-    const pid = Number(this.route.snapshot.paramMap.get('projectId') ?? 0);
-    this.projectId.set(pid);
-    this.loadUsers();
+    this.route.paramMap.subscribe(pm => {
+      const idRaw = pm.get('projectId');
+      const id = Number(idRaw ?? 0);
+
+      this.projectId.set(id);
+      this.projectName.set('');
+
+      if (id) {
+        this.projectsApi.getById(id).subscribe({
+          next: p => this.projectName.set(p.name),
+          error: () => this.projectName.set(''),
+        });
+      }
+    });
+    this.loadProjectMembers();
     this.loadSprints(true);
   }
 
@@ -111,17 +128,39 @@ export class SprintsPageComponent {
     ).subscribe();
   }
 
-  loadUsers() {
-    const query: UserQueryDto = { page: 1, pageSize: 100 };
+  loadProjectMembers() {
+    const projectId = this.projectId();
+    if (!projectId) {
+      this.members.set([]);
+      this.users.set([]);
+      return;
+    }
 
-    of(null).pipe(
-      switchMap(() => this.accountApi.getUsers(query)),
-      tap((res) => this.users.set((res ?? []).filter(u => !u.isDeleted))),
-      catchError(() => {
-        this.users.set([]);
-        return of([]);
-      })
-    ).subscribe();
+    this.loading.set(true);
+    this.error.set(null);
+
+    this.projectsApi.getMembers(projectId)
+      .pipe(
+        tap(members => {
+          this.members.set(members ?? []);
+
+          this.users.set(
+            (members ?? []).map(m => ({
+              id: m.userId,
+              name: m.userName,
+              email: m.email
+            } as UserDto))
+          );
+        }),
+        catchError(err => {
+          this.error.set('Failed to load project members.');
+          this.members.set([]);
+          this.users.set([]);
+          return of([]);
+        }),
+        finalize(() => this.loading.set(false))
+      )
+      .subscribe();
   }
 
   taskStatus(t: any): string {
@@ -208,6 +247,10 @@ export class SprintsPageComponent {
               inProgress: merge(b.inProgress),
               blocked: merge(b.blocked),
               done: merge(b.done),
+              low: merge(b.low),
+              medium: merge(b.medium),
+              high: merge(b.high),
+              critical: merge(b.critical),
             };
           })
         )

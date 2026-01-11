@@ -35,5 +35,12 @@
         {{ u.name }}
       </option>
     </select>
+    <span
+      class="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide border"
+      [ngClass]="priorityBadgeClass(t.priority)"
+      title="Priority"
+    >
+    {{ t.priority || 'None' }}
+  </span>
   </div>
 </div>

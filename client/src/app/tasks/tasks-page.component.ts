@@ -11,6 +11,7 @@ import { AccountApiService } from '../core/services/account-api.service';
 import { UserDto, UserQueryDto } from '../core/models/account.models';
 import {TaskCardComponent} from '../components/tasks/task-card.component';
 import {AuthStoreService} from '../core/services/auth-store.service';
+import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
 
 
 @Component({
@@ -27,6 +28,7 @@ export class TasksPageComponent {
   error = signal<string | null>(null);
   users = signal<UserDto[]>([]);
   projectId = signal<number>(0);
+  projectName = signal<string>('');
 
   sprints = signal<SprintDto[]>([]);
   activeSprint = signal<SprintDto | null>(null);
@@ -48,7 +50,8 @@ export class TasksPageComponent {
     private tasksApi: TasksApiService,
     private sprintsApi: SprintsApiService,
     private accountApi: AccountApiService,
-    private auth: AuthStoreService
+    private auth: AuthStoreService,
+    private projectsApi: ProjectsApiService,
   ) {
     this.createForm = this.fb.group({
       title: ['', [Validators.required]],
@@ -72,9 +75,22 @@ export class TasksPageComponent {
   }
 
   ngOnInit() {
-    const pid = Number(this.route.snapshot.paramMap.get('projectId') ?? 0);
-    this.projectId.set(pid);
-    this.reloadAll();
+    this.route.paramMap.subscribe(pm => {
+      const idRaw = pm.get('projectId');
+      const id = Number(idRaw ?? 0);
+
+      this.projectId.set(id);
+      this.projectName.set('');
+
+      if (id) {
+        this.projectsApi.getById(id).subscribe({
+          next: p => this.projectName.set(p.name),
+          error: () => this.projectName.set(''),
+        });
+      }
+
+      this.reloadAll();
+    });
   }
 
   isCompanyAdmin(): boolean {
@@ -87,8 +103,6 @@ export class TasksPageComponent {
 
     this.loading.set(true);
     this.error.set(null);
-
-    const query: UserQueryDto = { page: 1, pageSize: 100 };
 
     of(null).pipe(
       switchMap(() => this.sprintsApi.getByProject(pid)),
@@ -103,10 +117,17 @@ export class TasksPageComponent {
         if (active) this.createForm.patchValue({ sprintId: String(active.id) });
       }),
 
-      switchMap(() => this.accountApi.getUsers(query)),
-      tap((res) => {
-        const list = (res ?? []).filter(u => !u.isDeleted);
-        this.users.set(list);
+      switchMap(() => this.projectsApi.getMembers(pid)),
+      tap((members) => {
+        const mems = members ?? [];
+
+        this.users.set(
+          mems.map(m => ({
+            id: m.userId,
+            name: m.userName,
+            email: m.email
+          } as UserDto))
+        );
       }),
 
       switchMap(() => this.tasksApi.getBacklog(pid)),
@@ -121,7 +142,7 @@ export class TasksPageComponent {
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to load tasks.'));
         this.sprints.set([]);
-        this.users.set([])
+        this.users.set([]);
         this.backlog.set([]);
         this.sprintTasks.set([]);
         this.activeSprint.set(null);

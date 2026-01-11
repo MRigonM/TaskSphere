@@ -1,8 +1,8 @@
 ﻿<div class="space-y-6">
   <div class="flex items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold">Tasks</h1>
-      <p class="text-sm text-slate-400">Project #{{ projectId() }} • Backlog and Sprint tasks</p>
+      <h1 class="text-2xl font-semibold">{{ projectName() }}</h1>
+
     </div>
     <div class="flex items-center gap-2">
       <button
@@ -156,10 +156,15 @@
       </div>
       <div class="md:col-span-2">
         <label class="text-xs text-slate-400">Priority</label>
-        <input
+        <select
           formControlName="priority"
           class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
-        />
+        >
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
       </div>
       <div class="md:col-span-2">
         <label class="text-xs text-slate-400">Sprint</label>

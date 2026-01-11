@@ -10,4 +10,8 @@ public class SprintBoardDto
     public List<TaskEntity> InProgress { get; set; } = [];
     public List<TaskEntity> Blocked { get; set; } = [];
     public List<TaskEntity> Done { get; set; } = [];
+    public List<TaskEntity> Low { get; set; } = [];
+    public List<TaskEntity> Medium { get; set; } = [];
+    public List<TaskEntity> High { get; set; } = [];
+    public List<TaskEntity> Critical { get; set; } = [];
 }

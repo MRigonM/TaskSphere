@@ -154,6 +154,11 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
             SprintId = sprint.Id,
             SprintName = sprint.Name,
             ProjectId = sprint.ProjectId,
+            
+            Low = tasks.Where(t => t.Priority == TaskPriority.Low).ToList(),
+            Medium = tasks.Where(t => t.Priority == TaskPriority.Medium).ToList(),
+            High = tasks.Where(t => t.Priority == TaskPriority.High).ToList(),
+            Critical = tasks.Where(t => t.Priority == TaskPriority.Critical).ToList(),
 
             Open = tasks.Where(t => t.Status == TaskStatuses.Open).ToList(),
             InProgress = tasks.Where(t => t.Status == TaskStatuses.InProgress).ToList(),

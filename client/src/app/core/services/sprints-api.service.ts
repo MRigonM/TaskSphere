@@ -15,8 +15,10 @@ export class SprintsApiService {
 
   constructor(private http: HttpClient) {}
 
-  getByProject(projectId: number): Observable<SprintDto[]> {
-    return this.http.get<SprintDto[]>(`${this.base}project/${projectId}`);
+  getByProject(projectId: number, includeArchived = false) {
+    return this.http.get<SprintDto[]>(
+      `${this.base}project/${projectId}?includeArchived=${includeArchived}`
+    );
   }
 
   getById(sprintId: number): Observable<SprintDto> {
@@ -45,5 +47,12 @@ export class SprintsApiService {
 
   moveTaskToActive(sprintId: number, taskId: number): Observable<any> {
     return this.http.post(`${this.base}${sprintId}/tasks/${taskId}/move-to-active`, null);
+  }
+
+  setArchived(sprintId: number, isArchived: boolean) {
+    return this.http.patch<boolean>(
+      `${this.base}${sprintId}/archive?isArchived=${isArchived}`,
+      {}
+    );
   }
 }

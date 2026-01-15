@@ -103,40 +103,39 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
             .FirstOrDefaultAsync(s => s.Id == sprintId && s.CompanyId == companyId, ct);
 
         if (sprint == null) return;
+        if (!sprint.ProjectId.HasValue) return;
 
-        if (sprint.ProjectId.HasValue)
-        {
-            await _context.Set<Sprint>()
-                .Where(s => s.CompanyId == companyId
-                            && s.ProjectId == sprint.ProjectId
-                            && s.Id != sprintId
-                            && s.IsActive)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.IsActive, false), ct);
-        }
+        var prevActiveSprintId = await _context.Set<Sprint>()
+            .AsNoTracking()
+            .Where(s => s.CompanyId == companyId
+                        && s.ProjectId == sprint.ProjectId
+                        && s.Id != sprintId
+                        && s.IsActive)
+            .Select(s => (int?)s.Id)
+            .FirstOrDefaultAsync(ct);
+
+        await _context.Set<Sprint>()
+            .Where(s => s.CompanyId == companyId
+                        && s.ProjectId == sprint.ProjectId
+                        && s.Id != sprintId
+                        && s.IsActive)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.IsActive, false), ct);
 
         sprint.IsActive = true;
 
-        if (carryOverUnfinished && sprint.ProjectId.HasValue)
-        {
-            var prevSprintId = await _context.Set<Sprint>()
-                .Where(s => s.CompanyId == companyId
-                            && s.ProjectId == sprint.ProjectId
-                            && s.Id != sprintId)
-                .OrderByDescending(s => s.EndDate)
-                .Select(s => (int?)s.Id)
-                .FirstOrDefaultAsync(ct);
+        if (!carryOverUnfinished)
+            return;
 
-            if (prevSprintId.HasValue)
-            {
-                await _context.Set<TaskEntity>()
-                    .Where(t => t.CompanyId == companyId
-                                && t.ProjectId == sprint.ProjectId
-                                && t.SprintId == prevSprintId.Value
-                                && t.Status != TaskStatuses.Done)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.SprintId, sprintId), ct);
-            }
+        if (prevActiveSprintId.HasValue)
+        {
+            await _context.Set<TaskEntity>()
+                .Where(t => t.CompanyId == companyId
+                            && t.ProjectId == sprint.ProjectId
+                            && t.SprintId == prevActiveSprintId.Value
+                            && t.Status != TaskStatuses.Done)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.SprintId, sprintId), ct);
         }
     }
 

@@ -18,6 +18,7 @@ export interface SprintDto {
   startDate: string;
   endDate: string;
   isActive: boolean;
+  isArchived: boolean;
   projectId: number | null;
 }
 

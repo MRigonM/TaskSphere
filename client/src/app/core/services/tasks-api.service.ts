@@ -27,7 +27,6 @@ export class TasksApiService {
   }
 
   create(dto: CreateTaskDto): Observable<number> {
-    // backend returns Result<int> (task id)
     return this.http.post<number>(`${this.base}`, dto);
   }
 

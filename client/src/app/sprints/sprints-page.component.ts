@@ -34,6 +34,7 @@ export class SprintsPageComponent {
   statuses = ['Open', 'InProgress', 'Blocked', 'Done'];
   projectId = signal<number>(0);
   projectName = signal<string>('');
+  includeArchived = signal(false);
 
   sprints = signal<SprintDto[]>([]);
   selectedSprint = signal<SprintDto | null>(null);
@@ -97,21 +98,35 @@ export class SprintsPageComponent {
     const pid = this.projectId();
     if (!pid) return;
 
+    const currentlySelectedId = this.selectedSprint()?.id ?? null;
+
     this.loading.set(true);
     this.error.set(null);
 
     of(null).pipe(
-      switchMap(() => this.api.getByProject(pid)),
+      switchMap(() => this.api.getByProject(pid, this.includeArchived())),
       tap((list) => {
         const s = list ?? [];
         s.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
         this.sprints.set(s);
 
+        if (currentlySelectedId != null) {
+          const stillThere = s.find(x => x.id === currentlySelectedId) ?? null;
+          if (stillThere) {
+            this.selectSprint(stillThere);
+            return;
+          }
+        }
+
         if (!selectActiveIfPossible) return;
 
-        const active = s.find(x => x.isActive);
-        if (active) this.selectSprint(active);
-        else if (s.length) this.selectSprint(s[0]);
+        const active = s.find(x => x.isActive && !x.isArchived);
+        if (active) { this.selectSprint(active); return; }
+
+        const firstNonArchived = s.find(x => !x.isArchived);
+        if (firstNonArchived) { this.selectSprint(firstNonArchived); return; }
+
+        if (s.length) this.selectSprint(s[0]);
         else {
           this.selectedSprint.set(null);
           this.board.set(null);
@@ -123,6 +138,44 @@ export class SprintsPageComponent {
         this.selectedSprint.set(null);
         this.board.set(null);
         return of([]);
+      }),
+      finalize(() => this.loading.set(false))
+    ).subscribe();
+  }
+
+  setArchivedFlag(isArchived: boolean) {
+    const s = this.selectedSprint();
+    if (!s) return;
+
+    const pid = this.projectId();
+
+    if (isArchived && s.isActive) {
+      this.error.set('Set the sprint inactive before archiving.');
+      return;
+    }
+
+    this.loading.set(true);
+    this.error.set(null);
+
+    of(null).pipe(
+      switchMap(() => this.api.setArchived(s.id, isArchived)),
+      switchMap(() => this.api.getByProject(pid, this.includeArchived())),
+      tap((list) => {
+        const arr = list ?? [];
+        arr.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+        this.sprints.set(arr);
+
+        const updated = arr.find(x => x.id === s.id) ?? null;
+        this.selectedSprint.set(updated);
+
+        if (updated) this.loadBoard(s.id);
+        else {
+          this.board.set(null);
+        }
+      }),
+      catchError((err) => {
+        this.error.set(this.toMsg(err, 'Failed to update sprint archive status.'));
+        return of(null);
       }),
       finalize(() => this.loading.set(false))
     ).subscribe();
@@ -171,7 +224,7 @@ export class SprintsPageComponent {
     this.selectedSprint.set(s);
     this.showEdit.set(false);
     this.showCreate.set(false);
-    this.loadBoard();
+    this.loadBoard(s.id);
   }
 
   setTaskStatusFromBoard(t: any, status: string) {
@@ -258,15 +311,12 @@ export class SprintsPageComponent {
     );
   }
 
-  loadBoard() {
-    const s = this.selectedSprint();
-    if (!s) return;
-
+  loadBoard(sprintId: number) {
     this.loading.set(true);
     this.error.set(null);
 
     of(null).pipe(
-      switchMap(() => this.loadBoardMerged$(s.id)),
+      switchMap(() => this.loadBoardMerged$(sprintId)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to load sprint board.'));
@@ -440,7 +490,7 @@ export class SprintsPageComponent {
 
     of(null).pipe(
       switchMap(() => this.api.activateExistingAndCarryOver(s.id, carry)),
-      switchMap(() => this.api.getByProject(pid)),
+      switchMap(() => this.api.getByProject(pid, this.includeArchived())),
       tap((list) => {
         const arr = list ?? [];
         arr.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
@@ -510,5 +560,4 @@ export class SprintsPageComponent {
       this.setTaskStatusFromBoard(task, newStatus);
     }
   }
-
 }

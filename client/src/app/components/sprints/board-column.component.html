@@ -14,11 +14,12 @@
   >
     <div *ngFor="let t of tasks; trackBy: trackByTask" cdkDrag [cdkDragData]="t"
          (cdkDragStarted)="onDragStarted()" (cdkDragEnded)="onDragEnded()">
-    <app-board-task-card
+      <app-board-task-card
         [t]="t"
         [users]="users"
         [taskTitle]="taskTitle"
         [taskStatus]="taskStatus"
+        (open)="open.emit($event)"
         (assigneeChange)="assigneeChange.emit($event)"
       ></app-board-task-card>
     </div>

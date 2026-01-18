@@ -17,6 +17,7 @@ export class BoardTaskCardComponent {
   @Input() taskStatus: (x: any) => string = (x) => x?.status ?? '';
 
   @Output() assigneeChange = new EventEmitter<{ t: any; assigneeUserId: string | null }>();
+  @Output() open = new EventEmitter<any>();
 
   protected readonly String = String;
 

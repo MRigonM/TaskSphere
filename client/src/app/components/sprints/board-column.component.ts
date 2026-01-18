@@ -23,6 +23,7 @@ export class BoardColumnComponent {
   @Output() statusChange = new EventEmitter<{ t: any; status: string }>();
   @Output() assigneeChange = new EventEmitter<{ t: any; assigneeUserId: string | null}>();
   @Output() dropped = new EventEmitter<CdkDragDrop<any[]>>();
+  @Output() open = new EventEmitter<any>();
 
   trackByTask = (_: number, t: any) => t?.id ?? t?.taskId ?? t;
   private scrollY = 0;

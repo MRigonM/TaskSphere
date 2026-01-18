@@ -15,6 +15,7 @@ import {CdkDragDrop, moveItemInArray, transferArrayItem} from '@angular/cdk/drag
 import {AuthStoreService} from '../core/services/auth-store.service';
 import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
 import {MemberDto} from '../core/models/projects.models';
+import {TaskDetailsModalComponent} from '../components/tasks/task-details-modal.component';
 
 @Component({
   selector: 'app-sprints-page',
@@ -23,7 +24,8 @@ import {MemberDto} from '../core/models/projects.models';
     CommonModule,
     DatePipe,
     ReactiveFormsModule,
-    BoardColumnComponent
+    BoardColumnComponent,
+    TaskDetailsModalComponent
   ]
 })
 export class SprintsPageComponent {
@@ -42,6 +44,9 @@ export class SprintsPageComponent {
 
   showCreate = signal(false);
   showEdit = signal(false);
+
+  selectedTask = signal<any | null>(null);
+  showTaskDetails = signal(false);
 
   createForm: FormGroup;
   editForm: FormGroup;
@@ -88,6 +93,22 @@ export class SprintsPageComponent {
     });
     this.loadProjectMembers();
     this.loadSprints(true);
+  }
+
+  openTaskDetails(t: any) {
+    this.selectedTask.set(t);
+    this.showTaskDetails.set(true);
+  }
+
+  closeTaskDetails() {
+    this.showTaskDetails.set(false);
+    this.selectedTask.set(null);
+  }
+
+  onTaskDetailsSaved() {
+    const s = this.selectedSprint();
+    if (!s) return;
+    this.loadBoard(s.id);
   }
 
   isCompanyAdmin(): boolean {
@@ -225,6 +246,13 @@ export class SprintsPageComponent {
     this.showEdit.set(false);
     this.showCreate.set(false);
     this.loadBoard(s.id);
+  }
+
+  visibleSprints() {
+    const all = this.sprints() ?? [];
+    return this.isCompanyAdmin()
+      ? all
+      : all.filter(s => s.isActive);
   }
 
   setTaskStatusFromBoard(t: any, status: string) {

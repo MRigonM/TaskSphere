@@ -226,6 +226,7 @@
       [users]="users()"
       [taskTitle]="taskTitle.bind(this)"
       [taskStatus]="taskStatus.bind(this)"
+      (open)="openTaskDetails($event)"
       (dropped)="onBoardDrop($event)"
       (statusChange)="setTaskStatusFromBoard($event.t, $event.status)"
       (assigneeChange)="assignFromBoard($event.t, $event.assigneeUserId)"
@@ -240,6 +241,7 @@
       [users]="users()"
       [taskTitle]="taskTitle.bind(this)"
       [taskStatus]="taskStatus.bind(this)"
+      (open)="openTaskDetails($event)"
       (dropped)="onBoardDrop($event)"
       (statusChange)="setTaskStatusFromBoard($event.t, $event.status)"
       (assigneeChange)="assignFromBoard($event.t, $event.assigneeUserId)"
@@ -254,6 +256,7 @@
       [users]="users()"
       [taskTitle]="taskTitle.bind(this)"
       [taskStatus]="taskStatus.bind(this)"
+      (open)="openTaskDetails($event)"
       (dropped)="onBoardDrop($event)"
       (statusChange)="setTaskStatusFromBoard($event.t, $event.status)"
       (assigneeChange)="assignFromBoard($event.t, $event.assigneeUserId)"
@@ -268,9 +271,19 @@
       [users]="users()"
       [taskTitle]="taskTitle.bind(this)"
       [taskStatus]="taskStatus.bind(this)"
+      (open)="openTaskDetails($event)"
       (dropped)="onBoardDrop($event)"
       (statusChange)="setTaskStatusFromBoard($event.t, $event.status)"
       (assigneeChange)="assignFromBoard($event.t, $event.assigneeUserId)"
     ></app-board-column>
   </div>
 </div>
+<app-task-details-modal
+  *ngIf="showTaskDetails() && selectedTask()"
+  [task]="selectedTask()!"
+  [users]="users()"
+  [sprints]="visibleSprints()"
+  [canEditSprint]="isCompanyAdmin()"
+  (closed)="closeTaskDetails()"
+  (saved)="onTaskDetailsSaved()"
+></app-task-details-modal>

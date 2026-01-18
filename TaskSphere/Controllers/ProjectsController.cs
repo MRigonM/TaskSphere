@@ -42,7 +42,7 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
-    [Authorize(Roles = Roles.Company)]
+    [Authorize(Roles = Roles.CompanyOrUser)]
     [HttpGet("{projectId:int}/members")]
     public async Task<IActionResult> Members(int projectId, CancellationToken ct)
     {

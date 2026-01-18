@@ -20,4 +20,5 @@ export class TaskCardComponent {
   @Output() remove = new EventEmitter<any>();
   @Output() setStatus = new EventEmitter<{ task: any; status: string }>();
   @Output() move = new EventEmitter<any>();
+  @Output() open = new EventEmitter<any>();
 }

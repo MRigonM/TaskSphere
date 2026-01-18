@@ -173,7 +173,7 @@
           class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
         >
           <option value="">Backlog</option>
-          <option *ngFor="let s of sprints()" [value]="s.id">{{ s.name }}</option>
+          <option *ngFor="let s of visibleSprints()" [value]="s.id">{{ s.name }}</option>
         </select>
       </div>
       <div class="md:col-span-2">
@@ -213,6 +213,7 @@
           [assigneeName]="assigneeName.bind(this)"
           moveLabel="Move to Sprint"
           [moveDisabled]="!activeSprint()"
+          (open)="openTaskDetails($event)"
           (edit)="startEdit($event)"
           (remove)="deleteTask($event)"
           (setStatus)="setStatus($event.task, $event.status)"
@@ -240,6 +241,7 @@
           [statuses]="statuses"
           [assigneeName]="assigneeName.bind(this)"
           moveLabel="Move to Backlog"
+          (open)="openTaskDetails($event)"
           (edit)="startEdit($event)"
           (remove)="deleteTask($event)"
           (setStatus)="setStatus($event.task, $event.status)"
@@ -250,3 +252,12 @@
     </div>
   </div>
 </div>
+<app-task-details-modal
+  *ngIf="showTaskDetails() && selectedTask()"
+  [task]="selectedTask()!"
+  [users]="users()"
+  [sprints]="visibleSprints()"
+  [canEditSprint]="isCompanyAdmin()"
+  (closed)="closeTaskDetails()"
+  (saved)="onTaskDetailsSaved()"
+></app-task-details-modal>

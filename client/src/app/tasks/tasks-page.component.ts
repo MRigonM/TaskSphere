@@ -12,15 +12,18 @@ import { UserDto, UserQueryDto } from '../core/models/account.models';
 import {TaskCardComponent} from '../components/tasks/task-card.component';
 import {AuthStoreService} from '../core/services/auth-store.service';
 import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
+import {TaskDetailsModalComponent} from '../components/tasks/task-details-modal.component';
 
 
 @Component({
   selector: 'app-tasks-page',
+  standalone: true,
   templateUrl: './tasks-page.component.html',
   imports: [
     CommonModule,
     ReactiveFormsModule,
-    TaskCardComponent
+    TaskCardComponent,
+    TaskDetailsModalComponent
   ]
 })
 export class TasksPageComponent {
@@ -41,6 +44,9 @@ export class TasksPageComponent {
 
   createForm: FormGroup;
   editForm: FormGroup;
+
+  selectedTask = signal<TaskDto | null>(null);
+  showTaskDetails = signal(false);
 
   statuses = ['Open', 'InProgress', 'Blocked', 'Done'];
 
@@ -95,6 +101,38 @@ export class TasksPageComponent {
 
   isCompanyAdmin(): boolean {
     return this.auth.isCompany();
+  }
+
+  openTaskDetails(t: TaskDto) {
+    this.selectedTask.set(t);
+    this.showTaskDetails.set(true);
+  }
+
+  closeTaskDetails() {
+    this.showTaskDetails.set(false);
+    this.selectedTask.set(null);
+  }
+
+  onTaskDetailsSaved() {
+    const pid = this.projectId();
+
+    this.loading.set(true);
+    this.error.set(null);
+
+    of(null).pipe(
+      switchMap(() => this.tasksApi.getBacklog(pid)),
+      tap(tasks => this.backlog.set(tasks ?? [])),
+      switchMap(() => {
+        const s = this.activeSprint();
+        return s ? this.tasksApi.getBySprint(s.id) : of([]);
+      }),
+      tap(tasks => this.sprintTasks.set(tasks ?? [])),
+      catchError(err => {
+        this.error.set(this.toMsg(err, 'Failed to refresh tasks.'));
+        return of(null);
+      }),
+      finalize(() => this.loading.set(false))
+    ).subscribe();
   }
 
   reloadAll() {

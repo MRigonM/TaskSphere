@@ -9,6 +9,8 @@ import {ProjectComponent} from './company-dashboard/projects/projects.component'
 import {SprintsPageComponent} from './sprints/sprints-page.component';
 import {TasksPageComponent} from './tasks/tasks-page.component';
 import {companyMemberGuard} from './core/guards/company-member.guard';
+import {ProjectPageComponent} from './company-dashboard/projects/project-page.component';
+import {ProjectUsersComponent} from './company-dashboard/projects/project-users.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -23,6 +25,15 @@ export const routes: Routes = [
     path: 'dashboard/projects',
     component: ProjectComponent,
     canActivate: [companyGuard],
+  },
+  {
+    path: 'dashboard/projects/:projectId',
+    component: ProjectPageComponent,
+    canActivate: [companyMemberGuard],
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'users' },
+      { path: 'users', component: ProjectUsersComponent },
+    ],
   },
   {
     path: 'sprints/:projectId',

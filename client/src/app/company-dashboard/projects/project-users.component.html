@@ -1,0 +1,61 @@
+﻿<div class="space-y-4">
+
+  <div
+    *ngIf="error()"
+    class="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-200"
+  >
+    {{ error() }}
+  </div>
+
+  <div *ngIf="loading()" class="text-slate-400">Loading...</div>
+
+  <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div class="mb-2 text-sm font-semibold text-white">Add member</div>
+
+    <div class="flex gap-2">
+      <select
+        class="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-2 text-white"
+        [(ngModel)]="selectedUserId"
+        name="selectedUserId"
+      >
+        <option value="">Select a user…</option>
+        <option *ngFor="let u of users()" [value]="u.id">
+          {{ u.name }} ({{ u.email }})
+        </option>
+      </select>
+
+      <button
+        class="rounded-xl bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50"
+        [disabled]="!selectedUserId"
+        (click)="addMember()"
+        type="button"
+      >
+        Add
+      </button>
+    </div>
+  </div>
+
+  <div class="grid gap-3">
+    <div
+      *ngFor="let m of members()"
+      class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4"
+    >
+      <div>
+        <div class="font-semibold text-white">{{ m.userName }}</div>
+        <div class="text-xs text-slate-400">{{ m.email }}</div>
+      </div>
+
+      <button
+        class="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 transition"
+        (click)="removeMember(m.userId)"
+        type="button"
+      >
+        Remove
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="members().length === 0 && !loading()" class="text-slate-400">
+    No members yet.
+  </div>
+</div>

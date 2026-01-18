@@ -4,4 +4,6 @@ public static class Roles
 {
     public const string Company = "Company";
     public const string User = "User";
+    
+    public const string CompanyOrUser = Company + "," + User;
 }

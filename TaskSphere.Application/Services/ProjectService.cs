@@ -57,6 +57,20 @@ public class ProjectService : IProjectService
 
         return Result<IEnumerable<ProjectDto>>.Success(list);
     }
+    
+    public async Task<Result<ProjectDto>> GetByIdAsync(Guid companyId, int projectId, CancellationToken ct = default)
+    {
+        var project = await _projects.GetCompanyProjects(companyId)
+            .Where(p => p.Id == projectId)
+            .Select(p => new ProjectDto(p.Id, p.Name))
+            .FirstOrDefaultAsync(ct);
+
+        if (project == null)
+            return Result<ProjectDto>.Failure("Project not found.");
+
+        return Result<ProjectDto>.Success(project);
+    }
+
 
     public async Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, CancellationToken ct = default)
     {

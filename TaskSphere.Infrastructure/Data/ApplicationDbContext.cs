@@ -146,7 +146,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
             entity.Property(t => t.Status)
                 .IsRequired()
                 .HasMaxLength(50)
-                .HasDefaultValue("ToDo");
+                .HasDefaultValue("Open");
 
             entity.Property(t => t.Priority)
                 .HasMaxLength(50);

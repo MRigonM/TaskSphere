@@ -1,0 +1,263 @@
+﻿<div class="space-y-6">
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold">{{ projectName() }}</h1>
+
+    </div>
+    <div class="flex items-center gap-2">
+      <button
+        class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition"
+        (click)="openCreate()"
+      >
+        New Task
+      </button>
+      <button
+        class="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 transition"
+        (click)="reloadAll()"
+      >
+        Refresh
+      </button>
+    </div>
+  </div>
+  <div *ngIf="error()" class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+    {{ error() }}
+  </div>
+  <div *ngIf="isCompanyAdmin()"
+    class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div class="text-sm text-slate-300 mb-2">Sprints</div>
+    <div class="flex flex-wrap gap-2">
+      <button
+        *ngFor="let s of sprints()"
+        class="rounded-xl border px-3 py-2 text-sm transition"
+        [ngClass]="activeSprint()?.id === s.id
+          ? 'border-indigo-400 bg-indigo-500/15'
+          : 'border-white/10 bg-white/5'"
+        (click)="selectSprint(s)"
+      >
+        <span class="font-semibold">{{ s.name }}</span>
+        <span class="ml-2 text-xs" [ngClass]="s.isActive ? 'text-emerald-300' : 'text-slate-400'">
+          {{ s.isActive ? 'ACTIVE' : 'inactive' }}
+        </span>
+      </button>
+    </div>
+  </div>
+  <div *ngIf="showCreate()" class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <div class="font-semibold">Create Task</div>
+      <button class="text-sm text-slate-300 hover:text-white" (click)="cancelCreate()">Close</button>
+    </div>
+    <form [formGroup]="createForm" (ngSubmit)="submitCreate()" class="grid gap-3 md:grid-cols-6">
+      <div class="md:col-span-4">
+        <label class="text-xs text-slate-400">Title</label>
+        <input
+          formControlName="title"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+          placeholder="Implement login"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Assignee</label>
+        <select
+          formControlName="assigneeUserId"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="">Unassigned</option>
+          <option *ngFor="let u of users()" [value]="u.id">
+            {{ u.name }} ({{ u.email }})
+          </option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Priority</label>
+        <select
+          formControlName="priority"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Story Points</label>
+        <input
+          formControlName="storyPoints"
+          type="number"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Sprint</label>
+        <select
+          formControlName="sprintId"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="">Backlog</option>
+          <option *ngFor="let s of visibleSprints()" [value]="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="md:col-span-6">
+        <label class="text-xs text-slate-400">Description</label>
+        <textarea
+          formControlName="description"
+          rows="3"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        ></textarea>
+      </div>
+      <div class="md:col-span-6 flex justify-end pt-1">
+        <button
+          type="submit"
+          [disabled]="loading() || createForm.invalid"
+          class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50"
+        >
+          Create
+        </button>
+      </div>
+    </form>
+  </div>
+  <div *ngIf="editing()" class="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <div class="font-semibold">Edit Task #{{ editing()?.id }}</div>
+      <button class="text-sm text-slate-300 hover:text-white" (click)="cancelEdit()">Close</button>
+    </div>
+    <form [formGroup]="editForm" (ngSubmit)="submitEdit()" class="grid gap-3 md:grid-cols-6">
+      <div class="md:col-span-3">
+        <label class="text-xs text-slate-400">Title</label>
+        <input
+          formControlName="title"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Status</label>
+        <select
+          formControlName="status"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option *ngFor="let st of statuses" [value]="st">{{ st }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Story Points</label>
+        <input
+          formControlName="storyPoints"
+          type="number"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        />
+      </div>
+      <div class="md:col-span-6">
+        <label class="text-xs text-slate-400">Description</label>
+        <textarea
+          formControlName="description"
+          rows="3"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        ></textarea>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Priority</label>
+        <select
+          formControlName="priority"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Sprint</label>
+        <select
+          formControlName="sprintId"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="">Backlog</option>
+          <option *ngFor="let s of visibleSprints()" [value]="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="md:col-span-2">
+        <label class="text-xs text-slate-400">Assignee</label>
+        <select
+          formControlName="assigneeUserId"
+          class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        >
+          <option value="">Unassigned</option>
+          <option *ngFor="let u of users()" [value]="u.id">
+            {{ u.name }} ({{ u.email }})
+          </option>
+        </select>
+      </div>
+      <div class="md:col-span-6 flex justify-end">
+        <button
+          type="submit"
+          [disabled]="loading() || editForm.invalid"
+          class="rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+    </form>
+  </div>
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div class="mb-3 flex items-center justify-between">
+        <div class="font-semibold">Backlog</div>
+        <div class="text-xs text-slate-400">{{ backlog().length}}</div>
+      </div>
+      <div class="space-y-2">
+        <app-task-card
+          *ngFor="let t of backlog()"
+          [task]="t"
+          [statuses]="statuses"
+          [assigneeName]="assigneeName.bind(this)"
+          moveLabel="Move to Sprint"
+          [moveDisabled]="!activeSprint()"
+          (open)="openTaskDetails($event)"
+          (edit)="startEdit($event)"
+          (remove)="deleteTask($event)"
+          (setStatus)="setStatus($event.task, $event.status)"
+          (move)="moveToSprint($event)"
+        ></app-task-card>
+        <div *ngIf="!(backlog().length)" class="text-sm text-slate-400">No backlog tasks.</div>
+      </div>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div class="mb-3 flex items-center justify-between">
+        <div class="font-semibold">
+          Sprint
+          <span class="text-slate-300" *ngIf="activeSprint()"> : {{ activeSprint()?.name }}</span>
+          <span class="text-slate-400" *ngIf="!activeSprint()">— none selected</span>
+        </div>
+        <div class="text-xs text-slate-400">{{ sprintTasks().length }}</div>
+      </div>
+      <div *ngIf="!activeSprint()" class="text-sm text-slate-400">
+        Select an active sprint above to view sprint tasks.
+      </div>
+      <div class="space-y-2" *ngIf="activeSprint()">
+        <app-task-card
+          *ngFor="let t of sprintTasks()"
+          [task]="t"
+          [statuses]="statuses"
+          [assigneeName]="assigneeName.bind(this)"
+          moveLabel="Move to Backlog"
+          (open)="openTaskDetails($event)"
+          (edit)="startEdit($event)"
+          (remove)="deleteTask($event)"
+          (setStatus)="setStatus($event.task, $event.status)"
+          (move)="moveToBacklog($event)"
+        ></app-task-card>
+        <div *ngIf="!(sprintTasks().length)" class="text-sm text-slate-400">No sprint tasks.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<app-task-details-modal
+  *ngIf="showTaskDetails() && selectedTask()"
+  [task]="selectedTask()!"
+  [users]="users()"
+  [sprints]="visibleSprints()"
+  [canEditSprint]="isCompanyAdmin()"
+  (closed)="closeTaskDetails()"
+  (saved)="onTaskDetailsSaved()"
+></app-task-details-modal>

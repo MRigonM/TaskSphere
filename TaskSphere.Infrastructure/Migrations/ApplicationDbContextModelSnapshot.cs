@@ -339,6 +339,9 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -406,7 +409,7 @@ namespace TaskSphere.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("ToDo");
+                        .HasDefaultValue("Open");
 
                     b.Property<int?>("StoryPoints")
                         .HasColumnType("int");

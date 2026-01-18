@@ -22,6 +22,10 @@ export class ProjectsApiService {
     return this.http.get<MemberDto[]>(`${this.base}${projectId}/members`);
   }
 
+  getById(projectId: number): Observable<ProjectDto> {
+    return this.http.get<ProjectDto>(`${this.base}${projectId}`);
+  }
+
   addMember(projectId: number, dto: AddMemberDto): Observable<string> {
     return this.http.post(`${this.base}${projectId}/members`, dto, { responseType: 'text' });
   }

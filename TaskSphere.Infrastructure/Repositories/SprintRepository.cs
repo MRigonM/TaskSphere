@@ -18,11 +18,16 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
         _context = context;
     }
 
-    public async Task<List<Sprint>> GetByProjectAsync(int projectId, Guid companyId, CancellationToken ct)
+    public async Task<List<Sprint>> GetByProjectAsync(int projectId, Guid companyId, bool includeArchived, CancellationToken ct)
     {
-        return await _context.Set<Sprint>()
+        var q = _context.Set<Sprint>()
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && s.ProjectId == projectId)
+            .Where(s => s.CompanyId == companyId && s.ProjectId == projectId);
+
+        if (!includeArchived)
+            q = q.Where(s => !s.IsArchived);
+
+        return await q
             .OrderByDescending(s => s.IsActive)
             .ThenByDescending(s => s.StartDate)
             .ToListAsync(ct);
@@ -98,40 +103,39 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
             .FirstOrDefaultAsync(s => s.Id == sprintId && s.CompanyId == companyId, ct);
 
         if (sprint == null) return;
+        if (!sprint.ProjectId.HasValue) return;
 
-        if (sprint.ProjectId.HasValue)
-        {
-            await _context.Set<Sprint>()
-                .Where(s => s.CompanyId == companyId
-                            && s.ProjectId == sprint.ProjectId
-                            && s.Id != sprintId
-                            && s.IsActive)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.IsActive, false), ct);
-        }
+        var prevActiveSprintId = await _context.Set<Sprint>()
+            .AsNoTracking()
+            .Where(s => s.CompanyId == companyId
+                        && s.ProjectId == sprint.ProjectId
+                        && s.Id != sprintId
+                        && s.IsActive)
+            .Select(s => (int?)s.Id)
+            .FirstOrDefaultAsync(ct);
+
+        await _context.Set<Sprint>()
+            .Where(s => s.CompanyId == companyId
+                        && s.ProjectId == sprint.ProjectId
+                        && s.Id != sprintId
+                        && s.IsActive)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.IsActive, false), ct);
 
         sprint.IsActive = true;
 
-        if (carryOverUnfinished && sprint.ProjectId.HasValue)
-        {
-            var prevSprintId = await _context.Set<Sprint>()
-                .Where(s => s.CompanyId == companyId
-                            && s.ProjectId == sprint.ProjectId
-                            && s.Id != sprintId)
-                .OrderByDescending(s => s.EndDate)
-                .Select(s => (int?)s.Id)
-                .FirstOrDefaultAsync(ct);
+        if (!carryOverUnfinished)
+            return;
 
-            if (prevSprintId.HasValue)
-            {
-                await _context.Set<TaskEntity>()
-                    .Where(t => t.CompanyId == companyId
-                                && t.ProjectId == sprint.ProjectId
-                                && t.SprintId == prevSprintId.Value
-                                && t.Status != TaskStatuses.Done)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.SprintId, sprintId), ct);
-            }
+        if (prevActiveSprintId.HasValue)
+        {
+            await _context.Set<TaskEntity>()
+                .Where(t => t.CompanyId == companyId
+                            && t.ProjectId == sprint.ProjectId
+                            && t.SprintId == prevActiveSprintId.Value
+                            && t.Status != TaskStatuses.Done)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.SprintId, sprintId), ct);
         }
     }
 
@@ -154,6 +158,11 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
             SprintId = sprint.Id,
             SprintName = sprint.Name,
             ProjectId = sprint.ProjectId,
+            
+            Low = tasks.Where(t => t.Priority == TaskPriority.Low).ToList(),
+            Medium = tasks.Where(t => t.Priority == TaskPriority.Medium).ToList(),
+            High = tasks.Where(t => t.Priority == TaskPriority.High).ToList(),
+            Critical = tasks.Where(t => t.Priority == TaskPriority.Critical).ToList(),
 
             Open = tasks.Where(t => t.Status == TaskStatuses.Open).ToList(),
             InProgress = tasks.Where(t => t.Status == TaskStatuses.InProgress).ToList(),
@@ -175,4 +184,7 @@ public class SprintRepository : GenericRepository<Sprint, int>, ISprintRepositor
                 .SetProperty(x => x.SprintId, sprintId)
                 .SetProperty(x => x.Status, TaskStatuses.InProgress), ct);
     }
+    public Task<Sprint?> GetByCompanyAsync(Guid companyId, int sprintId, CancellationToken ct) =>
+        _context.Set<Sprint>().FirstOrDefaultAsync(s => s.Id == sprintId && s.CompanyId == companyId, ct);
+
 }

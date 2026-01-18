@@ -7,7 +7,7 @@ using TaskSphere.Filters;
 
 namespace TaskSphere.Controllers;
 
-[Authorize(Roles = Roles.Company)]
+[Authorize(Roles = Roles.CompanyOrUser)]
 [RequireCompany]
 [Route("api/[controller]")]
 public class SprintsController : ApiBaseController
@@ -20,9 +20,9 @@ public class SprintsController : ApiBaseController
     }
 
     [HttpGet("project/{projectId:int}")]
-    public async Task<IActionResult> GetByProject(int projectId, CancellationToken ct)
+    public async Task<IActionResult> GetByProject(int projectId, [FromQuery] bool includeArchived = false, CancellationToken ct = default)
     {
-        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, ct);
+        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, includeArchived, ct);
         return FromResult(result);
     }
 
@@ -33,6 +33,7 @@ public class SprintsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateSprintDto dto, CancellationToken ct)
     {
@@ -40,6 +41,7 @@ public class SprintsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPut("{sprintId:int}")]
     public async Task<IActionResult> Update(int sprintId, [FromBody] UpdateSprintDto dto, CancellationToken ct)
     {
@@ -47,13 +49,15 @@ public class SprintsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPatch("{sprintId:int}/active")]
     public async Task<IActionResult> SetActive(int sprintId, [FromQuery] bool isActive = true, CancellationToken ct = default)
     {
         var result = await _sprintService.SetActiveAsync(CompanyId, sprintId, isActive, ct);
         return FromResult(result);
     }
-
+    
+    [Authorize(Roles = Roles.Company)]
     [HttpPost("{sprintId:int}/activate")]
     public async Task<IActionResult> ActivateExistingAndCarryOver(int sprintId, [FromQuery] bool carryOverUnfinished = true, CancellationToken ct = default)
     {
@@ -68,10 +72,19 @@ public class SprintsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPost("{sprintId:int}/tasks/{taskId:int}/move-to-active")]
     public async Task<IActionResult> MoveTaskToActive(int sprintId, int taskId, CancellationToken ct)
     {
         var result = await _sprintService.MoveTaskToActiveAsync(CompanyId, sprintId, taskId, ct);
+        return FromResult(result);
+    }
+    
+    [Authorize(Roles = Roles.Company)]
+    [HttpPatch("{sprintId:int}/archive")]
+    public async Task<IActionResult> Archive(int sprintId, [FromQuery] bool isArchived = true, CancellationToken ct = default)
+    {
+        var result = await _sprintService.SetArchivedAsync(CompanyId, sprintId, isArchived, ct);
         return FromResult(result);
     }
 }

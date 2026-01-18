@@ -7,7 +7,7 @@ using TaskSphere.Filters;
 
 namespace TaskSphere.Controllers;
 
-[Authorize(Roles = Roles.Company)]
+[Authorize(Roles = Roles.CompanyOrUser)]
 [RequireCompany]
 [Route("api/[controller]")]
 public class ProjectsController : ApiBaseController
@@ -19,6 +19,7 @@ public class ProjectsController : ApiBaseController
         _projectService = projectService;
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateProjectDto dto, CancellationToken ct)
     {
@@ -32,7 +33,16 @@ public class ProjectsController : ApiBaseController
         var result = await _projectService.GetAllAsync(CompanyId, ct);
         return FromResult(result);
     }
+    
+    [Authorize(Roles = Roles.CompanyOrUser)]
+    [HttpGet("{projectId:int}")]
+    public async Task<IActionResult> GetById(int projectId, CancellationToken ct)
+    {
+        var result = await _projectService.GetByIdAsync(CompanyId, projectId, ct);
+        return FromResult(result);
+    }
 
+    [Authorize(Roles = Roles.CompanyOrUser)]
     [HttpGet("{projectId:int}/members")]
     public async Task<IActionResult> Members(int projectId, CancellationToken ct)
     {
@@ -40,6 +50,7 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpPost("{projectId:int}/members")]
     public async Task<IActionResult> AddMember(int projectId, [FromBody] AddMemberDto dto, CancellationToken ct)
     {
@@ -47,6 +58,7 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Authorize(Roles = Roles.Company)]
     [HttpDelete("{projectId:int}/members/{userId}")]
     public async Task<IActionResult> RemoveMember(int projectId, string userId, CancellationToken ct)
     {

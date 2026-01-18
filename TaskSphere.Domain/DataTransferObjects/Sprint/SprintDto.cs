@@ -8,4 +8,5 @@ public class SprintDto
     public DateTime EndDate { get; set; }
     public bool IsActive { get; set; }
     public int? ProjectId { get; set; }
+    public bool IsArchived { get; set; } 
 }

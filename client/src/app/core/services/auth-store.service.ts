@@ -30,7 +30,20 @@ export class AuthStoreService {
     return !!this.getToken();
   }
 
+  getRole(): string | null {
+    return this.getAuth()?.role ?? null;
+  }
+
   isCompany(): boolean {
-    return (this.getAuth()?.role ?? '').toLowerCase() === 'company';
+    return this.getRole()?.toLowerCase() === 'company';
+  }
+
+  isCompanyUser(): boolean {
+    return this.getRole()?.toLowerCase() === 'user';
+  }
+
+  isCompanyMember(): boolean {
+    const role = this.getRole()?.toLowerCase();
+    return role === 'company' || role === 'user';
   }
 }

@@ -20,9 +20,9 @@ public class SprintService : ISprintService
         _mapper = mapper;
     }
 
-    public async Task<Result<List<SprintDto>>> GetByProjectAsync(Guid companyId, int projectId, CancellationToken ct)
+    public async Task<Result<List<SprintDto>>> GetByProjectAsync(Guid companyId, int projectId, bool includeArchived, CancellationToken ct)
     {
-        var sprints = await _sprintRepository.GetByProjectAsync(projectId, companyId, ct);
+        var sprints = await _sprintRepository.GetByProjectAsync(projectId, companyId, includeArchived, ct);
         return Result<List<SprintDto>>.Success(_mapper.Map<List<SprintDto>>(sprints));
     }
 
@@ -115,5 +115,19 @@ public class SprintService : ISprintService
             return new Error("Sprint.Dates.InvalidRange", "EndDate must be after StartDate.");
 
         return null;
+    }
+    public async Task<Result<bool>> SetArchivedAsync(Guid companyId, int sprintId, bool isArchived, CancellationToken ct)
+    {
+        var sprint = await _sprintRepository.GetByCompanyAsync(companyId, sprintId, ct);
+        if (sprint == null) return Result<bool>.Failure("Sprint not found.");
+
+        if (isArchived && sprint.IsActive)
+            return Result<bool>.Failure("Active sprint cannot be archived. Set it inactive first.");
+
+        sprint.IsArchived = isArchived;
+
+        _sprintRepository.Update(sprint);
+        await _unitOfWork.SaveChangesAsync(ct);
+        return Result<bool>.Success(true);
     }
 }

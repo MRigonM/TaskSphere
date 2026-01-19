@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import {Component, HostListener} from '@angular/core';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import {AuthStoreService} from '../../core/services/auth-store.service';
@@ -35,5 +35,14 @@ export class HeaderComponent {
 
   closeMenu() {
     this.menuOpen = false;
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: Event) {
+    const e = event as KeyboardEvent;
+    if (e.key !== 'Escape') return;
+
+    e.preventDefault();
+    this.closeMenu();
   }
 }

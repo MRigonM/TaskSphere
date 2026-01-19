@@ -1,5 +1,5 @@
 ﻿import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import {Component, computed, HostListener, inject, signal} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
@@ -154,6 +154,17 @@ export class UsersDashboardComponent {
   closeModal() {
     this.modalOpen.set(false);
     this.error.set(null);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: Event) {
+    if (!this.modalOpen()) return;
+
+    const e = event as KeyboardEvent;
+    if (e.key !== 'Escape') return;
+
+    e.preventDefault();
+    this.closeModal();
   }
 
   submitModal() {

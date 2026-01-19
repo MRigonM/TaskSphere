@@ -1,5 +1,6 @@
 <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
   <app-header></app-header>
+  <app-sub-header  *ngIf="isLoggedIn()"></app-sub-header>
   <main class="mx-auto w-full max-w-6xl px-4 py-8 flex-1">
     <router-outlet></router-outlet>
   </main>

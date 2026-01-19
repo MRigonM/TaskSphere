@@ -13,7 +13,6 @@ import {AuthStoreService} from '../../core/services/auth-store.service';
 export class SubHeaderComponent {
   projectId = signal<number | null>(null);
 
-  isLoggedIn = computed(() => this.auth.isLoggedIn());
   isCompany = computed(() => this.auth.isCompany());
 
   constructor(public auth: AuthStoreService, private router: Router) {}

@@ -11,4 +11,5 @@ public interface IProjectService
     Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, CancellationToken ct = default);
     Task<Result<string>> AddMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default);
     Task<Result<string>> RemoveMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default);
+    Task<Result<IEnumerable<ProjectDto>>> GetMembersProjects(Guid companyId, string userId, CancellationToken ct = default);
 }

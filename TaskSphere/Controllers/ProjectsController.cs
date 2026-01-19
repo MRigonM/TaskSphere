@@ -41,6 +41,14 @@ public class ProjectsController : ApiBaseController
         var result = await _projectService.GetByIdAsync(CompanyId, projectId, ct);
         return FromResult(result);
     }
+    
+    [Authorize(Roles = Roles.User)]
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMembersProjects(CancellationToken ct)
+    {
+        var result = await _projectService.GetMembersProjects(CompanyId, UserId, ct);
+        return FromResult(result);
+    }
 
     [Authorize(Roles = Roles.CompanyOrUser)]
     [HttpGet("{projectId:int}/members")]

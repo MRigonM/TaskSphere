@@ -4,10 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 
-import { AddMemberDto, MemberDto, ProjectDto } from '../../core/models/projects.models';
+import { ProjectDto } from '../../core/models/projects.models';
 import { ProjectsApiService } from './projects.service';
-import { AccountApiService } from '../../core/services/account-api.service';
 import {Router} from '@angular/router';
+import {AuthStoreService} from '../../core/services/auth-store.service';
 
 @Component({
   selector: 'app-project',
@@ -24,7 +24,8 @@ export class ProjectComponent {
 
   constructor(
     private projectsApi: ProjectsApiService,
-    private router: Router
+    private router: Router,
+    private authStore: AuthStoreService
   ) {}
 
   ngOnInit() {
@@ -37,7 +38,10 @@ export class ProjectComponent {
 
     of(null)
       .pipe(
-        switchMap(() => this.projectsApi.getAll()),
+        switchMap(() => this.authStore.isCompany()
+          ? this.projectsApi.getAll()
+          : this.projectsApi.getMembersProjects()
+        ),
         tap((res) => this.projects.set(res ?? [])),
         catchError((err) => {
           this.error.set(this.toMsg(err, 'Failed to load projects.'));
@@ -73,7 +77,17 @@ export class ProjectComponent {
   }
 
   openProject(p: ProjectDto) {
-    this.router.navigate(['dashboard/projects', p.id]);
+    if (this.authStore.isCompany()) {
+      this.router.navigate(['/dashboard/projects', p.id]);
+      return;
+    }
+
+    if (this.authStore.isCompanyUser()) {
+      this.router.navigate(['/sprints', p.id]);
+      return;
+    }
+
+    this.router.navigate(['/sprints', p.id]);
   }
 
   private toMsg(err: any, fallback: string): string {

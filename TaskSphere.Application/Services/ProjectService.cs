@@ -70,7 +70,20 @@ public class ProjectService : IProjectService
 
         return Result<ProjectDto>.Success(project);
     }
+    
+    public async Task<Result<IEnumerable<ProjectDto>>> GetMembersProjects(Guid companyId, string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return Result<IEnumerable<ProjectDto>>.Failure("Invalid user.");
 
+        var list = await _projects.GetCompanyProjects(companyId)
+            .Where(p => p.Members.Any(m => m.UserId == userId && !m.IsDeleted))
+            .OrderBy(p => p.Name)
+            .Select(p => new ProjectDto(p.Id, p.Name))
+            .ToListAsync(ct);
+
+        return Result<IEnumerable<ProjectDto>>.Success(list);
+    }
 
     public async Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, CancellationToken ct = default)
     {

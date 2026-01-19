@@ -90,6 +90,10 @@ export class ProjectComponent {
     this.router.navigate(['/sprints', p.id]);
   }
 
+  isCompany(): boolean {
+    return this.authStore.isCompany();
+  }
+
   private toMsg(err: any, fallback: string): string {
     if (Array.isArray(err?.error)) return err.error.join('\n');
     if (typeof err?.error === 'string') return err.error;

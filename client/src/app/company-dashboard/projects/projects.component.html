@@ -15,7 +15,9 @@
 
   <div *ngIf="loading()" class="mb-4 text-slate-400">Loading...</div>
 
-  <form (ngSubmit)="createProject()" class="mb-6 flex gap-2">
+  <form
+    *ngIf="isCompany()"
+    (ngSubmit)="createProject()" class="mb-6 flex gap-2">
     <input
       class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white outline-none"
       placeholder="Project name (e.g. Rigon)"

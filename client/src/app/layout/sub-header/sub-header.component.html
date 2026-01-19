@@ -1,0 +1,52 @@
+﻿<nav *ngIf="isLoggedIn()" class="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+  <div class="mx-auto max-w-6xl px-4 py-3">
+    <div class="flex items-center gap-3 text-sm">
+      <a
+        routerLink="/dashboard/projects"
+        class="text-slate-300 hover:text-white transition"
+        routerLinkActive="text-white font-semibold"
+        [routerLinkActiveOptions]="{ exact: true }"
+      >
+        Projects
+      </a>
+
+      <ng-container *ngIf="projectId() as pid">
+        <span class="text-slate-600">/</span>
+
+        <a
+          [routerLink]="['/tasks', pid]"
+          class="text-slate-300 hover:text-white transition"
+          routerLinkActive="text-white font-semibold"
+        >
+          Backlog
+        </a>
+
+        <span class="text-slate-600">/</span>
+
+        <a
+          [routerLink]="['/sprints', pid]"
+          class="text-slate-300 hover:text-white transition"
+          routerLinkActive="text-white font-semibold"
+        >
+          Board
+        </a>
+
+        <ng-container *ngIf="isCompany()">
+          <span class="text-slate-600">/</span>
+
+          <a
+            [routerLink]="['/dashboard/projects', pid, 'sprints']"
+            class="text-slate-300 hover:text-white transition"
+            routerLinkActive="text-white font-semibold"
+          >
+            Sprints
+          </a>
+        </ng-container>
+      </ng-container>
+
+      <span *ngIf="!projectId()" class="text-xs text-slate-500 ml-2">
+        Select a project…
+      </span>
+    </div>
+  </div>
+</nav>

@@ -7,13 +7,11 @@ namespace TaskSphere.Infrastructure.Repositories;
 
 public class GenericRepository<TEntity, TKey> : IGenericRepository<TEntity, TKey> where TEntity : BaseEntity<TKey>
 {
-    private readonly ApplicationDbContext _context;
     private readonly DbSet<TEntity> _dbSet;
 
     public GenericRepository(ApplicationDbContext context)
     {
-        _context = context;
-        _dbSet = _context.Set<TEntity>();
+        _dbSet = context.Set<TEntity>();
     }
 
     public async Task<TEntity?> GetByIdAsync(TKey id, CancellationToken cancellationToken = default)

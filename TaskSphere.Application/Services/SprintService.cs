@@ -68,7 +68,6 @@ public class SprintService : ISprintService
         _mapper.Map(dto, sprint);
         sprint.Name = sprint.Name.Trim();
 
-        _sprintRepository.Update(sprint);
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result<SprintDto>.Success(_mapper.Map<SprintDto>(sprint));
@@ -106,16 +105,6 @@ public class SprintService : ISprintService
         return Result<bool>.Success(true);
     }
 
-    private static Error? ValidateSprintDates(DateTime start, DateTime end)
-    {
-        if (start == default || end == default)
-            return new Error("Sprint.Dates.Required", "StartDate and EndDate are required.");
-
-        if (end < start)
-            return new Error("Sprint.Dates.InvalidRange", "EndDate must be after StartDate.");
-
-        return null;
-    }
     public async Task<Result<bool>> SetArchivedAsync(Guid companyId, int sprintId, bool isArchived, CancellationToken ct)
     {
         var sprint = await _sprintRepository.GetByCompanyAsync(companyId, sprintId, ct);
@@ -126,7 +115,7 @@ public class SprintService : ISprintService
 
         sprint.IsArchived = isArchived;
 
-        _sprintRepository.Update(sprint);
+        await _sprintRepository.Update(sprint, ct);
         await _unitOfWork.SaveChangesAsync(ct);
         return Result<bool>.Success(true);
     }

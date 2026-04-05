@@ -22,14 +22,14 @@ public class SprintsController : ApiBaseController
     [HttpGet("project/{projectId:int}")]
     public async Task<IActionResult> GetByProject(int projectId, [FromQuery] bool includeArchived = false, CancellationToken ct = default)
     {
-        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, includeArchived, ct);
+        var result = await _sprintService.GetByProjectAsync(CompanyId, projectId, UserId, IsCompanyAdmin, includeArchived, ct);
         return FromResult(result);
     }
 
     [HttpGet("{sprintId:int}")]
     public async Task<IActionResult> GetById(int sprintId, CancellationToken ct)
     {
-        var result = await _sprintService.GetByIdAsync(CompanyId, sprintId, ct);
+        var result = await _sprintService.GetByIdAsync(CompanyId, sprintId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
 
@@ -68,7 +68,7 @@ public class SprintsController : ApiBaseController
     [HttpGet("{sprintId:int}/board")]
     public async Task<IActionResult> Board(int sprintId, CancellationToken ct)
     {
-        var result = await _sprintService.GetBoardAsync(CompanyId, sprintId, ct);
+        var result = await _sprintService.GetBoardAsync(CompanyId, sprintId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
 

@@ -10,24 +10,32 @@ namespace TaskSphere.Application.Services;
 public class SprintService : ISprintService
 {
     private readonly ISprintRepository _sprintRepository;
+    private readonly IAccessControlService _accessControl;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
 
-    public SprintService(ISprintRepository sprintRepository, IUnitOfWork unitOfWork, IMapper mapper)
+    public SprintService(ISprintRepository sprintRepository, IAccessControlService accessControl, IUnitOfWork unitOfWork, IMapper mapper)
     {
         _sprintRepository = sprintRepository;
+        _accessControl = accessControl;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
     }
 
-    public async Task<Result<List<SprintDto>>> GetByProjectAsync(Guid companyId, int projectId, bool includeArchived, CancellationToken ct)
+    public async Task<Result<List<SprintDto>>> GetByProjectAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, bool includeArchived, CancellationToken ct)
     {
+        if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
+            return Result<List<SprintDto>>.Failure(EntityError.Forbidden);
+
         var sprints = await _sprintRepository.GetByProjectAsync(projectId, companyId, includeArchived, ct);
         return Result<List<SprintDto>>.Success(_mapper.Map<List<SprintDto>>(sprints));
     }
 
-    public async Task<Result<SprintDto>> GetByIdAsync(Guid companyId, int sprintId, CancellationToken ct)
+    public async Task<Result<SprintDto>> GetByIdAsync(Guid companyId, int sprintId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
+        if (!isCompanyAdmin && !await _accessControl.CanAccessSprintAsync(companyId, userId, sprintId, ct))
+            return Result<SprintDto>.Failure(EntityError.Forbidden);
+
         var sprint = await _sprintRepository.GetWithProjectAsync(sprintId, companyId, ct);
         if (sprint == null)
             return Result<SprintDto>.Failure("Sprint not found.");
@@ -88,8 +96,11 @@ public class SprintService : ISprintService
         return Result<bool>.Success(true);
     }
 
-    public async Task<Result<SprintBoardDto>> GetBoardAsync(Guid companyId, int sprintId, CancellationToken ct)
+    public async Task<Result<SprintBoardDto>> GetBoardAsync(Guid companyId, int sprintId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
+        if (!isCompanyAdmin && !await _accessControl.CanAccessSprintAsync(companyId, userId, sprintId, ct))
+            return Result<SprintBoardDto>.Failure(EntityError.Forbidden);
+
         var board = await _sprintRepository.GetBoardAsync(sprintId, companyId, ct);
         if (board == null)
             return Result<SprintBoardDto>.Failure("Sprint not found.");

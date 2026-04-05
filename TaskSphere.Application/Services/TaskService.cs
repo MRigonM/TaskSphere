@@ -1,5 +1,4 @@
 using AutoMapper;
-using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.Task;
@@ -11,20 +10,29 @@ namespace TaskSphere.Application.Services;
 public class TaskService : ITaskService
 {
     private readonly ITaskRepository _taskRepository;
+    private readonly IAccessControlService _accessControl;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
 
-    public TaskService(ITaskRepository taskRepository, IUnitOfWork unitOfWork, IMapper mapper)
+    public TaskService(
+        ITaskRepository taskRepository,
+        IAccessControlService accessControl,
+        IUnitOfWork unitOfWork,
+        IMapper mapper)
     {
         _taskRepository = taskRepository;
+        _accessControl = accessControl;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
     }
     
-    public async Task<Result<TaskDto>> GetByIdAsync(int taskId, Guid companyId, CancellationToken ct)
+    public async Task<Result<TaskDto>> GetByIdAsync(int taskId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<TaskDto>.Failure(EntityError.Forbidden);
+
             var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<TaskDto>.Failure(EntityError.NotFound(taskId));
 
@@ -36,10 +44,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<List<TaskDto>>> GetByProjectAsync(int projectId, Guid companyId, CancellationToken ct)
+    public async Task<Result<List<TaskDto>>> GetByProjectAsync(int projectId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
+                return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
+
             var list = await _taskRepository.GetByProjectAsync(projectId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
@@ -49,10 +60,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<List<TaskDto>>> GetBacklogAsync(int projectId, Guid companyId, CancellationToken ct)
+    public async Task<Result<List<TaskDto>>> GetBacklogAsync(int projectId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
+                return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
+
             var list = await _taskRepository.GetBacklogAsync(projectId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
@@ -62,10 +76,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<List<TaskDto>>> GetBySprintAsync(int sprintId, Guid companyId, CancellationToken ct)
+    public async Task<Result<List<TaskDto>>> GetBySprintAsync(int sprintId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessSprintAsync(companyId, userId, sprintId, ct))
+                return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
+
             var list = await _taskRepository.GetBySprintAsync(sprintId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
@@ -75,10 +92,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<int>> CreateAsync(CreateTaskDto dto, Guid companyId, string createdByUserId, CancellationToken ct)
+    public async Task<Result<int>> CreateAsync(CreateTaskDto dto, Guid companyId, string createdByUserId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, createdByUserId, dto.ProjectId, ct))
+                return Result<int>.Failure(EntityError.Forbidden);
+
             var entity = _mapper.Map<TaskEntity>(dto);
             entity.CompanyId = companyId;
             entity.CreatedByUserId = createdByUserId;
@@ -97,10 +117,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<TaskDto>> UpdateAsync(int taskId, UpdateTaskDto dto, Guid companyId, CancellationToken ct)
+    public async Task<Result<TaskDto>> UpdateAsync(int taskId, UpdateTaskDto dto, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<TaskDto>.Failure(EntityError.Forbidden);
+
             var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<TaskDto>.Failure(EntityError.NotFound(taskId));
 
@@ -117,10 +140,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<bool>> DeleteAsync(int taskId, Guid companyId, CancellationToken ct)
+    public async Task<Result<bool>> DeleteAsync(int taskId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<bool>.Failure(EntityError.Forbidden);
+
             var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<bool>.Failure(EntityError.NotFound(taskId));
 
@@ -137,10 +163,19 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<bool>> MoveToSprintAsync(int taskId, int sprintId, Guid companyId, CancellationToken ct)
+    public async Task<Result<bool>> MoveToSprintAsync(int taskId, int sprintId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin)
+            {
+                var canAccessTask = await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct);
+                var canAccessSprint = await _accessControl.CanAccessSprintAsync(companyId, userId, sprintId, ct);
+
+                if (!canAccessTask || !canAccessSprint)
+                    return Result<bool>.Failure(EntityError.Forbidden);
+            }
+
             await _taskRepository.MoveToSprintAsync(taskId, sprintId, companyId, ct);
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
@@ -157,10 +192,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<bool>> MoveToBacklogAsync(int taskId, Guid companyId, CancellationToken ct)
+    public async Task<Result<bool>> MoveToBacklogAsync(int taskId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<bool>.Failure(EntityError.Forbidden);
+
             await _taskRepository.MoveToBacklogAsync(taskId, companyId, ct);
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
@@ -177,10 +215,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<bool>> SetStatusAsync(int taskId, string status, Guid companyId, CancellationToken ct)
+    public async Task<Result<bool>> SetStatusAsync(int taskId, string status, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<bool>.Failure(EntityError.Forbidden);
+
             if (string.IsNullOrWhiteSpace(status))
                 return Result<bool>.Failure(new Error("Validation.StatusRequired", "Status is required."));
 
@@ -201,10 +242,13 @@ public class TaskService : ITaskService
         }
     }
 
-    public async Task<Result<bool>> AssignAsync(int taskId, string? assigneeUserId, Guid companyId, CancellationToken ct)
+    public async Task<Result<bool>> AssignAsync(int taskId, string? assigneeUserId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
         {
+            if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
+                return Result<bool>.Failure(EntityError.Forbidden);
+
             await _taskRepository.AssignAsync(taskId, companyId, assigneeUserId, ct);
 
             var saved = await _unitOfWork.SaveChangesAsync(ct);

@@ -15,17 +15,20 @@ public class ProjectService : IProjectService
     private readonly IMemberRepository _memberRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly UserManager<AppUser> _userManager;
+    private readonly IAccessControlService _accessControl;
 
     public ProjectService(
         IProjectRepository projects,
         IMemberRepository memberRepository,
         IUnitOfWork unitOfWork,
-        UserManager<AppUser> userManager)
+        UserManager<AppUser> userManager,
+        IAccessControlService accessControl)
     {
         _projects = projects;
         _memberRepository = memberRepository;
         _unitOfWork = unitOfWork;
         _userManager = userManager;
+        _accessControl = accessControl;
     }
 
     public async Task<Result<ProjectDto>> CreateAsync(Guid companyId, CreateProjectDto dto, CancellationToken ct = default)
@@ -48,8 +51,11 @@ public class ProjectService : IProjectService
         return Result<ProjectDto>.Success(new ProjectDto(project.Id, project.Name));
     }
 
-    public async Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, CancellationToken ct = default)
+    public async Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
+        if (!isCompanyAdmin)
+            return await GetMembersProjects(companyId, userId, ct);
+
         var list = await _projects.GetCompanyProjects(companyId)
             .OrderBy(p => p.Name)
             .Select(p => new ProjectDto(p.Id, p.Name))
@@ -58,8 +64,11 @@ public class ProjectService : IProjectService
         return Result<IEnumerable<ProjectDto>>.Success(list);
     }
     
-    public async Task<Result<ProjectDto>> GetByIdAsync(Guid companyId, int projectId, CancellationToken ct = default)
+    public async Task<Result<ProjectDto>> GetByIdAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
+        if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
+            return Result<ProjectDto>.Failure(EntityError.Forbidden);
+
         var project = await _projects.GetCompanyProjects(companyId)
             .Where(p => p.Id == projectId)
             .Select(p => new ProjectDto(p.Id, p.Name))
@@ -85,8 +94,11 @@ public class ProjectService : IProjectService
         return Result<IEnumerable<ProjectDto>>.Success(list);
     }
 
-    public async Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, CancellationToken ct = default)
+    public async Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
+        if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
+            return Result<IEnumerable<MemberDto>>.Failure(EntityError.Forbidden);
+
         var project = await _projects.GetCompanyProjectAsync(companyId, projectId, ct);
         if (project == null)
             return Result<IEnumerable<MemberDto>>.Failure("Project not found.");

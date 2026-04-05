@@ -3,6 +3,7 @@ namespace TaskSphere.Domain.Common;
 public class EntityError
 {
     public static Error NotFound(int id) => new Error($"NotFound", $"ID {id} was not found.");
+    public static Error Forbidden => new Error("Auth.Forbidden", "You do not have access to this resource.");
 
     public static Error NoChangesDetected => new Error($"NoChanges", "No changes were detected during the operation.");
 

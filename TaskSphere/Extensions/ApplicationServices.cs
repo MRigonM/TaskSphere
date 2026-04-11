@@ -6,6 +6,7 @@ using TaskSphere.Domain.Entities.Identity;
 using TaskSphere.Domain.Interfaces;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
+using TaskSphere.Infrastructure.Services;
 
 namespace TaskSphere.Extensions;
 
@@ -46,11 +47,14 @@ public static class ApplicationServices
         
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
+        services.AddScoped<IAccessControlService, AccessControlService>();
         
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<ICompanyRepository, CompanyRepository>();
 
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ITaskValidationService, TaskValidationService>();
+        services.AddScoped<ISprintValidationService, SprintValidationService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IMemberRepository, MemberRepository>();

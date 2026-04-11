@@ -32,7 +32,7 @@ export const routes: Routes = [
     canActivate: [companyGuard]
   },
   {
-    path: 'dashboard/projects/:projectId/sprints',
+    path: 'dashboard/projects/sprints/:projectId',
     component: ProjectSprintsComponent,
     canActivate: [companyGuard],
   },

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Domain.Common;
+using TaskSphere.Domain.Enums;
 
 namespace TaskSphere.Controllers;
 
@@ -16,6 +17,9 @@ public class ApiBaseController : ControllerBase
         if (result.IsSuccess)
             return Ok();
 
+        if (result.Errors.Any(e => e.Code == "Auth.Forbidden"))
+            return StatusCode(StatusCodes.Status403Forbidden, result.Errors);
+
         return BadRequest(result.Errors);
     }
     
@@ -27,4 +31,6 @@ public class ApiBaseController : ControllerBase
     protected string UserId
         => User.FindFirstValue(ClaimTypes.NameIdentifier)
            ?? throw new InvalidOperationException("UserId claim not found.");
+
+    protected bool IsCompanyAdmin => User.IsInRole(Roles.Company);
 }

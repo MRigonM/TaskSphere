@@ -30,7 +30,7 @@ public class ProjectsController : ApiBaseController
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
-        var result = await _projectService.GetAllAsync(CompanyId, ct);
+        var result = await _projectService.GetAllAsync(CompanyId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
     
@@ -38,7 +38,7 @@ public class ProjectsController : ApiBaseController
     [HttpGet("{projectId:int}")]
     public async Task<IActionResult> GetById(int projectId, CancellationToken ct)
     {
-        var result = await _projectService.GetByIdAsync(CompanyId, projectId, ct);
+        var result = await _projectService.GetByIdAsync(CompanyId, projectId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
     
@@ -54,7 +54,7 @@ public class ProjectsController : ApiBaseController
     [HttpGet("{projectId:int}/members")]
     public async Task<IActionResult> Members(int projectId, CancellationToken ct)
     {
-        var result = await _projectService.GetMembersAsync(CompanyId, projectId, ct);
+        var result = await _projectService.GetMembersAsync(CompanyId, projectId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
 

@@ -4,6 +4,7 @@ public class EntityError
 {
     public static Error NotFound(int id) => new Error($"NotFound", $"ID {id} was not found.");
     public static Error Forbidden => new Error("Auth.Forbidden", "You do not have access to this resource.");
+    public static Error InvalidAssignee => new Error("Validation.InvalidAssignee", "Assignee must be a member of the task's project.");
 
     public static Error NoChangesDetected => new Error($"NoChanges", "No changes were detected during the operation.");
 

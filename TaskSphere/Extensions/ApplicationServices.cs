@@ -53,6 +53,8 @@ public static class ApplicationServices
         services.AddScoped<ICompanyRepository, CompanyRepository>();
 
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ITaskValidationService, TaskValidationService>();
+        services.AddScoped<ISprintValidationService, SprintValidationService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IMemberRepository, MemberRepository>();

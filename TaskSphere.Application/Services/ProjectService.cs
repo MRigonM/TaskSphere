@@ -54,7 +54,7 @@ public class ProjectService : IProjectService
     public async Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
         if (!isCompanyAdmin)
-            return await GetMembersProjects(companyId, userId, ct);
+            return Result<IEnumerable<ProjectDto>>.Success(await _accessControl.GetAccessibleProjectsAsync(companyId, userId, ct));
 
         var list = await _projects.GetCompanyProjects(companyId)
             .OrderBy(p => p.Name)
@@ -85,13 +85,8 @@ public class ProjectService : IProjectService
         if (string.IsNullOrWhiteSpace(userId))
             return Result<IEnumerable<ProjectDto>>.Failure("Invalid user.");
 
-        var list = await _projects.GetCompanyProjects(companyId)
-            .Where(p => p.Members.Any(m => m.UserId == userId && !m.IsDeleted))
-            .OrderBy(p => p.Name)
-            .Select(p => new ProjectDto(p.Id, p.Name))
-            .ToListAsync(ct);
-
-        return Result<IEnumerable<ProjectDto>>.Success(list);
+        return Result<IEnumerable<ProjectDto>>.Success(
+            await _accessControl.GetAccessibleProjectsAsync(companyId, userId, ct));
     }
 
     public async Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default)

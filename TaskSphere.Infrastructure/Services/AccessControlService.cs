@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
+using TaskSphere.Domain.DataTransferObjects.Project;
 using TaskSphere.Infrastructure.Data;
 using TaskEntity = TaskSphere.Domain.Entities.Task;
 
@@ -35,5 +36,32 @@ public class AccessControlService : IAccessControlService
         return _db.Set<TaskEntity>()
             .Where(t => t.Id == taskId && t.CompanyId == companyId && t.ProjectId.HasValue)
             .AnyAsync(t => t.Project!.Members.Any(m => m.UserId == userId), ct);
+    }
+
+    public Task<bool> CanAssignToProjectAsync(Guid companyId, string assigneeUserId, int projectId, CancellationToken ct = default)
+    {
+        return _db.Members.AnyAsync(
+            m => m.Project.CompanyId == companyId
+                 && m.ProjectId == projectId
+                 && m.UserId == assigneeUserId,
+            ct);
+    }
+
+    public Task<bool> CanAssignToTaskAsync(Guid companyId, string assigneeUserId, int taskId, CancellationToken ct = default)
+    {
+        return _db.Set<TaskEntity>()
+            .Where(t => t.Id == taskId && t.CompanyId == companyId && t.ProjectId.HasValue)
+            .AnyAsync(t => t.Project!.Members.Any(m => m.UserId == assigneeUserId), ct);
+    }
+
+    public Task<List<ProjectDto>> GetAccessibleProjectsAsync(Guid companyId, string userId, CancellationToken ct = default)
+    {
+        return _db.Projects
+            .AsNoTracking()
+            .Where(p => p.CompanyId == companyId)
+            .Where(p => p.Members.Any(m => m.UserId == userId))
+            .OrderBy(p => p.Name)
+            .Select(p => new ProjectDto(p.Id, p.Name))
+            .ToListAsync(ct);
     }
 }

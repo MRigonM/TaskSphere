@@ -8,6 +8,7 @@ import { ProjectDto } from '../../core/models/projects.models';
 import { ProjectsApiService } from './projects.service';
 import {Router} from '@angular/router';
 import {AuthStoreService} from '../../core/services/auth-store.service';
+import {ToastService} from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-project',
@@ -25,7 +26,8 @@ export class ProjectComponent {
   constructor(
     private projectsApi: ProjectsApiService,
     private router: Router,
-    private authStore: AuthStoreService
+    private authStore: AuthStoreService,
+    private toast: ToastService,
   ) {}
 
   ngOnInit() {
@@ -66,6 +68,7 @@ export class ProjectComponent {
         tap((p) => {
           this.name = '';
           if (p) this.projects.set([p, ...this.projects()]);
+          this.toast.show('Project was created');
         }),
         catchError((err) => {
           this.error.set(this.toMsg(err, 'Failed to create project.'));

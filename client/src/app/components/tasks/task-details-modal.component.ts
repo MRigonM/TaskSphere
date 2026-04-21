@@ -4,6 +4,7 @@ import { ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angula
 import { UserDto } from '../../core/models/account.models';
 import { TasksApiService } from '../../core/services/tasks-api.service';
 import {UpdateTaskDto} from '../../core/models/tasks.models';
+import { ToastService } from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-task-details-modal',
@@ -27,7 +28,8 @@ export class TaskDetailsModalComponent {
 
   constructor(
     private fb: FormBuilder,
-    private tasksApi: TasksApiService
+    private tasksApi: TasksApiService,
+    private toast: ToastService,
   ) {
     this.form = this.fb.group({
       title: ['', [Validators.required]],
@@ -90,6 +92,7 @@ export class TaskDetailsModalComponent {
 
     this.tasksApi.update(this.task.id, dto).subscribe({
       next: () => {
+        this.toast.show('Task was updated');
         this.saved.emit();
         this.closed.emit();
       },

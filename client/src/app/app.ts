@@ -5,11 +5,12 @@ import {HeaderComponent} from './layout/header/header.component';
 import {SubHeaderComponent} from './layout/sub-header/sub-header.component';
 import {NgIf} from '@angular/common';
 import {AuthStoreService} from './core/services/auth-store.service';
+import {ToastComponent} from './layout/toast/toast.component';
 
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, FooterComponent, HeaderComponent, SubHeaderComponent, NgIf],
+  imports: [RouterOutlet, FooterComponent, HeaderComponent, SubHeaderComponent, NgIf, ToastComponent],
   templateUrl: './app.html',
   styleUrl: './app.css',
   standalone: true

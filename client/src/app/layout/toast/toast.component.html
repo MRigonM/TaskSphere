@@ -1,0 +1,22 @@
+<div class="fixed bottom-10 right-6 z-[100] flex flex-col gap-2">
+  <div
+    *ngFor="let t of toast.toasts()"
+    class="flex items-start gap-3 rounded-xl border bg-slate-900 px-4 py-3 shadow-xl text-sm min-w-[260px] max-w-xs transition-all"
+    [ngClass]="{
+      'border-emerald-500/40': t.type === 'success',
+      'border-red-500/40':     t.type === 'error',
+      'border-white/10':       t.type === 'info'
+    }"
+  >
+    <span
+      class="mt-0.5 h-2 w-2 shrink-0 rounded-full"
+      [ngClass]="{
+        'bg-emerald-400': t.type === 'success',
+        'bg-red-400':     t.type === 'error',
+        'bg-slate-400':   t.type === 'info'
+      }"
+    ></span>
+    <span class="flex-1 text-slate-100">{{ t.message }}</span>
+    <button class="text-slate-400 hover:text-white leading-none" (click)="toast.dismiss(t.id)">✕</button>
+  </div>
+</div>

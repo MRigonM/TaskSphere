@@ -16,6 +16,7 @@ import {AuthStoreService} from '../core/services/auth-store.service';
 import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
 import {MemberDto} from '../core/models/projects.models';
 import {TaskDetailsModalComponent} from '../components/tasks/task-details-modal.component';
+import {ToastService} from '../core/services/toast.service';
 
 @Component({
   selector: 'app-sprints-page',
@@ -61,6 +62,7 @@ export class SprintsPageComponent {
     private tasksApi: TasksApiService,
     private auth: AuthStoreService,
     private projectsApi: ProjectsApiService,
+    private toast: ToastService,
   ) {
     this.createForm = this.fb.group({
       name: ['', [Validators.required]],
@@ -190,9 +192,9 @@ export class SprintsPageComponent {
         this.selectedSprint.set(updated);
 
         if (updated) this.loadBoard(s.id);
-        else {
-          this.board.set(null);
-        }
+        else this.board.set(null);
+
+        this.toast.show(isArchived ? 'Sprint was archived' : 'Sprint was unarchived');
       }),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to update sprint archive status.'));
@@ -403,6 +405,9 @@ export class SprintsPageComponent {
         const active = s.find(x => x.isActive);
         if (active) this.selectSprint(active);
         else if (s.length) this.selectSprint(s[0]);
+
+        this.showCreate.set(false);
+        this.toast.show('Sprint was created');
       }),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to create sprint.'));
@@ -464,6 +469,7 @@ export class SprintsPageComponent {
         if (updated) this.selectedSprint.set(updated);
 
         this.showEdit.set(false);
+        this.toast.show('Sprint was updated');
       }),
       switchMap(() => {
         const sel = this.selectedSprint();
@@ -497,6 +503,8 @@ export class SprintsPageComponent {
 
         const updated = arr.find(x => x.id === s.id) ?? null;
         if (updated) this.selectedSprint.set(updated);
+
+        this.toast.show(isActive ? 'Sprint was activated' : 'Sprint was deactivated');
       }),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to set active flag.'));
@@ -528,7 +536,7 @@ export class SprintsPageComponent {
         if (updated) this.selectedSprint.set(updated);
       }),
       switchMap(() => this.loadBoardMerged$(s.id)),
-      tap((b) => this.board.set(b)),
+      tap((b) => { this.board.set(b); this.toast.show('Sprint was activated'); }),
       catchError((err) => {
         this.error.set(this.toMsg(err, 'Failed to activate sprint.'));
         return of(null);

@@ -5,6 +5,7 @@ import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
 import { AccountApiService } from '../../core/services/account-api.service';
 import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/models/account.models';
+import { ToastService } from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-company-dashboard',
@@ -15,6 +16,7 @@ import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/mo
 export class UsersDashboardComponent {
   private fb = inject(FormBuilder);
   private account = inject(AccountApiService);
+  private toast = inject(ToastService);
 
   loading = signal(false);
   error = signal<string | null>(null);
@@ -203,6 +205,7 @@ export class UsersDashboardComponent {
           tap(() => {
             this.closeModal();
             this.load();
+            this.toast.show('User was created');
           }),
           catchError((err) => {
             this.error.set(this.toMsg(err, 'Failed to create user.'));
@@ -248,6 +251,7 @@ export class UsersDashboardComponent {
         tap(() => {
           this.closeModal();
           this.load();
+          this.toast.show('User was updated');
         }),
         catchError((err) => {
           this.error.set(this.toMsg(err, 'Failed to update user.'));
@@ -269,6 +273,7 @@ export class UsersDashboardComponent {
       .pipe(
         tap(() => {
           this.users.update((arr) => arr.filter((u) => u.id !== user.id));
+          this.toast.show('User was deleted', 'error');
         }),
         catchError((err) => {
           this.error.set(this.toMsg(err, 'Failed to delete user.'));

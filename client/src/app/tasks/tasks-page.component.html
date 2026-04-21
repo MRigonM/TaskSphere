@@ -252,6 +252,38 @@
     </div>
   </div>
 </div>
+<div *ngIf="taskToDelete()" class="fixed inset-0 z-50 flex items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" (click)="cancelDelete()"></div>
+  <div
+    class="relative w-full max-w-sm rounded-2xl bg-slate-900 p-6 shadow-xl border border-white/10"
+    (click)="$event.stopPropagation()"
+  >
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Delete Task</h2>
+      <button class="text-slate-400 hover:text-white" (click)="cancelDelete()">✕</button>
+    </div>
+    <p class="text-sm text-slate-300 mb-6">
+      Are you sure you want to delete <span class="font-semibold text-white">
+      {{ taskToDelete()?.title }}</span>?
+    </p>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-xl border border-white/10 px-4 py-2 text-sm hover:bg-white/10"
+        (click)="cancelDelete()"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-400 transition"
+        (click)="confirmDelete()"
+      >
+        Delete
+      </button>
+    </div>
+  </div>
+</div>
 <app-task-details-modal
   *ngIf="showTaskDetails() && selectedTask()"
   [task]="selectedTask()!"

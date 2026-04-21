@@ -13,6 +13,7 @@ import {TaskCardComponent} from '../components/tasks/task-card.component';
 import {AuthStoreService} from '../core/services/auth-store.service';
 import {ProjectsApiService} from '../company-dashboard/projects/projects.service';
 import {TaskDetailsModalComponent} from '../components/tasks/task-details-modal.component';
+import {ToastService} from '../core/services/toast.service';
 
 
 @Component({
@@ -48,6 +49,8 @@ export class TasksPageComponent {
   selectedTask = signal<TaskDto | null>(null);
   showTaskDetails = signal(false);
 
+  taskToDelete = signal<TaskDto | null>(null);
+
   statuses = ['Open', 'InProgress', 'Blocked', 'Done'];
 
   constructor(
@@ -58,6 +61,7 @@ export class TasksPageComponent {
     private accountApi: AccountApiService,
     private auth: AuthStoreService,
     private projectsApi: ProjectsApiService,
+    private toast: ToastService,
   ) {
     this.createForm = this.fb.group({
       title: ['', [Validators.required]],
@@ -319,7 +323,7 @@ export class TasksPageComponent {
 
     of(null).pipe(
       switchMap(() => this.tasksApi.create(dto)),
-      tap(() => this.showCreate.set(false)),
+      tap(() => { this.showCreate.set(false); this.toast.show('Task was created'); }),
       switchMap(() => this.tasksApi.getBacklog(pid)),
       tap((tasks) => this.backlog.set(tasks ?? [])),
       switchMap(() => {
@@ -380,7 +384,7 @@ export class TasksPageComponent {
 
     of(null).pipe(
       switchMap(() => this.tasksApi.update(t.id, dto)),
-      tap(() => this.editing.set(null)),
+      tap(() => { this.editing.set(null); this.toast.show('Task was updated'); }),
       switchMap(() => this.tasksApi.getBacklog(pid)),
       tap((tasks) => this.backlog.set(tasks ?? [])),
       switchMap(() => {
@@ -397,13 +401,25 @@ export class TasksPageComponent {
   }
 
   deleteTask(t: TaskDto) {
-    const pid = this.projectId();
+    this.taskToDelete.set(t);
+  }
 
+  cancelDelete() {
+    this.taskToDelete.set(null);
+  }
+
+  confirmDelete() {
+    const t = this.taskToDelete();
+    if (!t) return;
+
+    const pid = this.projectId();
+    this.taskToDelete.set(null);
     this.loading.set(true);
     this.error.set(null);
 
     of(null).pipe(
       switchMap(() => this.tasksApi.delete(t.id)),
+      tap(() => this.toast.show('Task was deleted', 'error')),
       switchMap(() => this.tasksApi.getBacklog(pid)),
       tap((tasks) => this.backlog.set(tasks ?? [])),
       switchMap(() => {

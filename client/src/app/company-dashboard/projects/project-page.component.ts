@@ -7,6 +7,7 @@ import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
+import { ToastService } from '../../core/services/toast.service';
 
 import { UserDto, UserQueryDto } from '../../core/models/account.models';
 import { AddMemberDto, MemberDto } from '../../core/models/projects.models';
@@ -29,7 +30,8 @@ export class ProjectPageComponent {
   constructor(
     private route: ActivatedRoute,
     private projectsApi: ProjectsApiService,
-    private accountApi: AccountApiService
+    private accountApi: AccountApiService,
+    private toast: ToastService,
   ) {}
 
   ngOnInit() {
@@ -133,7 +135,7 @@ export class ProjectPageComponent {
     of(null)
       .pipe(
         switchMap(() => this.projectsApi.addMember(projectId, dto)),
-        tap(() => (this.selectedUserId = '')),
+        tap(() => { this.selectedUserId = ''; this.toast.show('Member was added'); }),
         switchMap(() => this.projectsApi.getMembers(projectId)),
         tap((res) => this.members.set(res ?? [])),
         catchError((err) => {
@@ -155,6 +157,7 @@ export class ProjectPageComponent {
     of(null)
       .pipe(
         switchMap(() => this.projectsApi.removeMember(projectId, userId)),
+        tap(() => this.toast.show('Member was removed', 'info')),
         switchMap(() => this.projectsApi.getMembers(projectId)),
         tap((res) => this.members.set(res ?? [])),
         catchError((err) => {

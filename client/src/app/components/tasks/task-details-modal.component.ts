@@ -96,7 +96,9 @@ export class TaskDetailsModalComponent {
         this.saved.emit();
         this.closed.emit();
       },
-      error: () => {
+      error: (err) => {
+        const isNoChanges = Array.isArray(err?.error) && err.error.some((e: any) => e?.code === 'NoChanges');
+        if (isNoChanges) { this.closed.emit(); return; }
         this.error.set('Failed to save task.');
         this.loading.set(false);
       }

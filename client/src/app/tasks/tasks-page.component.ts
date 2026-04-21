@@ -393,6 +393,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
+        if (this.isNoChanges(err)) { this.editing.set(null); return of(null); }
         this.error.set(this.toMsg(err, 'Failed to update task.'));
         return of(null);
       }),
@@ -505,6 +506,10 @@ export class TasksPageComponent {
     if (v === null || v === undefined || v === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
+  }
+
+  private isNoChanges(err: any): boolean {
+    return Array.isArray(err?.error) && err.error.some((e: any) => e?.code === 'NoChanges');
   }
 
   private toMsg(err: any, fallback: string): string {

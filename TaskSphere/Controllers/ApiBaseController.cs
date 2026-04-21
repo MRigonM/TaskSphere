@@ -17,10 +17,29 @@ public class ApiBaseController : ControllerBase
         if (result.IsSuccess)
             return Ok();
 
-        if (result.Errors.Any(e => e.Code == "Auth.Forbidden"))
-            return StatusCode(StatusCodes.Status403Forbidden, result.Errors);
+        return MapErrors(result.Errors);
+    }
 
-        return BadRequest(result.Errors);
+    protected IActionResult FromResult(Result result)
+    {
+        if (result.IsSuccess)
+            return Ok();
+
+        return MapErrors(result.Errors);
+    }
+
+    private IActionResult MapErrors(IReadOnlyList<Domain.Common.Error> errors)
+    {
+        if (errors.Any(e => e.Code == "Auth.Forbidden"))
+            return StatusCode(StatusCodes.Status403Forbidden, errors);
+
+        if (errors.Any(e => e.Code == "NotFound"))
+            return NotFound(errors);
+
+        if (errors.Any(e => e.Code == "Conflict"))
+            return Conflict(errors);
+
+        return BadRequest(errors);
     }
     
     protected Guid CompanyId

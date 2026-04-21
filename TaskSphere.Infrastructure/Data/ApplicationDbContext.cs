@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TaskSphere.Domain.Entities;
 using TaskSphere.Domain.Entities.Identity;
 using Task = TaskSphere.Domain.Entities.Task;
+using SystemTask = System.Threading.Tasks;
 
 namespace TaskSphere.Infrastructure.Data;
 
@@ -11,6 +12,22 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
     {
+    }
+
+    public override async SystemTask.Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State == EntityState.Added && entry.Metadata.FindProperty("CreatedAtUtc") is not null)
+                entry.Property("CreatedAtUtc").CurrentValue = now;
+
+            if (entry.State == EntityState.Modified && entry.Metadata.FindProperty("UpdatedAtUtc") is not null)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        return await base.SaveChangesAsync(cancellationToken);
     }
 
     public DbSet<Company> Companies { get; set; }
@@ -156,5 +173,12 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .HasForeignKey(t => t.ProjectId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            var createdAt = entityType.FindProperty("CreatedAtUtc");
+            if (createdAt is not null)
+                createdAt.SetDefaultValueSql("GETUTCDATE()");
+        }
     }
 }

@@ -30,7 +30,7 @@ public class ChatService : IChatService
 
     public async Task<Result<ChatMessageDto>> SendMessageAsync(Guid companyId, string userId, SendMessageDto dto, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(dto.Content))
+        if (string.IsNullOrWhiteSpace(dto.Content) && string.IsNullOrWhiteSpace(dto.ImageUrl))
             return Result<ChatMessageDto>.Failure("Message content cannot be empty.");
 
         var hasAccess = await _accessControl.CanAccessProjectAsync(companyId, userId, dto.ProjectId, ct);
@@ -41,7 +41,8 @@ public class ChatService : IChatService
         {
             ProjectId = dto.ProjectId,
             SenderId = userId,
-            Content = dto.Content.Trim()
+            Content = dto.Content?.Trim() ?? string.Empty,
+            ImageUrl = dto.ImageUrl
         };
 
         await _chatRepo.AddAsync(message, ct);
@@ -54,6 +55,7 @@ public class ChatService : IChatService
             message.SenderId,
             sender?.Name ?? "Unknown",
             message.Content,
+            message.ImageUrl,
             message.CreatedAtUtc);
 
         return Result<ChatMessageDto>.Success(result);
@@ -81,6 +83,7 @@ public class ChatService : IChatService
                 m.SenderId,
                 m.Sender.Name,
                 m.Content,
+                m.ImageUrl,
                 m.CreatedAtUtc))
             .ToListAsync(ct);
 

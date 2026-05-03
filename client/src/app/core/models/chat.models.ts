@@ -4,6 +4,7 @@ export interface ChatMessageDto {
   senderId: string;
   senderName: string;
   content: string;
+  imageUrl: string | null;
   sentAt: string;
 }
 

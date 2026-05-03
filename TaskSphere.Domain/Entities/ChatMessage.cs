@@ -9,4 +9,5 @@ public class ChatMessage : BaseEntity<int>
     public string SenderId { get; set; } = string.Empty;
     public AppUser Sender { get; set; } = null!;
     public string Content { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
 }

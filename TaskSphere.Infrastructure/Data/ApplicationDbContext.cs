@@ -180,8 +180,10 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
             entity.HasQueryFilter(m => !m.IsDeleted);
 
             entity.Property(m => m.Content)
-                .IsRequired()
                 .HasMaxLength(2000);
+
+            entity.Property(m => m.ImageUrl)
+                .HasMaxLength(500);
 
             entity.HasOne(m => m.Project)
                 .WithMany()

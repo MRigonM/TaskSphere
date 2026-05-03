@@ -66,11 +66,17 @@ export class ChatService {
     }
   }
 
-  sendMessage(content: string): void {
+  sendMessage(content: string, imageUrl?: string): void {
     const projectId = this.currentProjectId();
     if (!this.hubConnection || !projectId) return;
 
-    this.hubConnection.invoke('SendMessage', { projectId, content });
+    this.hubConnection.invoke('SendMessage', { projectId, content, imageUrl: imageUrl ?? null });
+  }
+
+  uploadImage(file: File): Observable<{ url: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<{ url: string }>(`${environment.apiUrl}Chat/upload`, formData);
   }
 
   checkAccess(projectId: number): Observable<boolean> {

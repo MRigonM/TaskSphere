@@ -29,7 +29,8 @@ export class SubHeaderComponent {
     const m =
       url.match(/\/dashboard\/projects\/(\d+)/) ||
       url.match(/\/tasks\/(\d+)/) ||
-      url.match(/\/sprints\/(\d+)/);
+      url.match(/\/sprints\/(\d+)/) ||
+      url.match(/\/chat\/(\d+)/);
 
     const id = m ? Number(m[1]) : NaN;
     return Number.isFinite(id) && id > 0 ? id : null;

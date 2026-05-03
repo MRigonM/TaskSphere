@@ -62,7 +62,8 @@ public static class ApplicationServices
         services.AddScoped<ISprintRepository, SprintRepository>();
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<ITaskService, TaskService>();
-        
+        services.AddScoped<IChatService, ChatService>();
+
         return services;
     }
 }

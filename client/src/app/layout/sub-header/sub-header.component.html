@@ -31,6 +31,16 @@
           Board
         </a>
 
+        <span class="text-slate-600">/</span>
+
+        <a
+          [routerLink]="['/chat', pid]"
+          class="text-slate-300 hover:text-white transition"
+          routerLinkActive="text-white font-semibold"
+        >
+          Chat
+        </a>
+
         <ng-container *ngIf="isCompany()">
           <span class="text-slate-600">/</span>
 

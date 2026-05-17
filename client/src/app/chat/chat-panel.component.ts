@@ -1,44 +1,52 @@
-import { Component, OnDestroy, OnInit, ViewChild, ElementRef } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Component, effect, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../core/services/chat.service';
+import { ChatPanelService } from '../core/services/chat-panel.service';
 import { AuthStoreService } from '../core/services/auth-store.service';
 import { environment } from '../../environments/environment';
 
 @Component({
-  selector: 'app-chat-page',
+  selector: 'app-chat-panel',
   standalone: true,
-  templateUrl: './chat-page.component.html',
   imports: [CommonModule, FormsModule],
+  templateUrl: './chat-panel.component.html',
 })
-export class ChatPageComponent implements OnInit, OnDestroy {
+export class ChatPanelComponent {
   @ViewChild('messagesContainer') messagesContainer!: ElementRef<HTMLDivElement>;
 
   messageInput = '';
-  projectId = 0;
   uploading = false;
 
   constructor(
-    private route: ActivatedRoute,
-    private router: Router,
     protected chatService: ChatService,
+    protected panelService: ChatPanelService,
     protected authStore: AuthStoreService,
-  ) {}
-
-  ngOnInit(): void {
-    this.projectId = +this.route.snapshot.params['projectId'];
-    this.chatService.checkAccess(this.projectId).subscribe((hasAccess) => {
-      if (!hasAccess) {
-        this.router.navigate(['/dashboard/projects']);
-        return;
+  ) {
+    effect(() => {
+      const id = this.panelService.projectId();
+      if (id) {
+        this.chatService.connect(id);
+      } else {
+        this.chatService.disconnect();
       }
-      this.chatService.connect(this.projectId);
+    });
+
+    effect(() => {
+      this.chatService.messages();
+      setTimeout(() => this.scrollToBottom(), 0);
+    });
+
+    effect(() => {
+      if (this.panelService.isOpen()) {
+        setTimeout(() => this.scrollToBottom(), 0);
+      }
     });
   }
 
-  ngOnDestroy(): void {
-    this.chatService.disconnect();
+  private scrollToBottom(): void {
+    const el = this.messagesContainer?.nativeElement;
+    if (el) el.scrollTop = el.scrollHeight;
   }
 
   send(): void {
@@ -51,7 +59,6 @@ export class ChatPageComponent implements OnInit, OnDestroy {
   onPaste(event: ClipboardEvent): void {
     const items = event.clipboardData?.items;
     if (!items) return;
-
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.startsWith('image/')) {
         event.preventDefault();
@@ -77,9 +84,7 @@ export class ChatPageComponent implements OnInit, OnDestroy {
         this.messageInput = '';
         this.uploading = false;
       },
-      error: () => {
-        this.uploading = false;
-      },
+      error: () => { this.uploading = false; },
     });
   }
 

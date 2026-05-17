@@ -1,9 +1,14 @@
-<div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+<div class="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
   <app-header></app-header>
-  <app-sub-header  *ngIf="isLoggedIn()"></app-sub-header>
-  <main class="mx-auto w-full max-w-6xl px-4 py-8 flex-1">
-    <router-outlet></router-outlet>
-  </main>
+  <app-sub-header *ngIf="isLoggedIn()"></app-sub-header>
+  <div class="flex flex-1 overflow-hidden">
+    <main class="flex-1 min-w-0 overflow-auto">
+      <div class="mx-auto w-full max-w-6xl px-4 py-8">
+        <router-outlet></router-outlet>
+      </div>
+    </main>
+    <app-chat-panel></app-chat-panel>
+  </div>
   <app-footer [year]="year"></app-footer>
   <app-toast></app-toast>
 </div>

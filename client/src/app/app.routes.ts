@@ -11,8 +11,6 @@ import {TasksPageComponent} from './tasks/tasks-page.component';
 import {companyMemberGuard} from './core/guards/company-member.guard';
 import {ProjectPageComponent} from './company-dashboard/projects/project-page.component';
 import {ProjectSprintsComponent} from './company-dashboard/projects/project-sprints.component';
-import {ChatPageComponent} from './chat/chat-page.component';
-
 export const routes: Routes = [
   { path: '', component: HomeComponent },
   { path: 'account/login', component: LoginComponent, canActivate: [guestGuard] },
@@ -45,11 +43,6 @@ export const routes: Routes = [
   {
     path: 'tasks/:projectId',
     component: TasksPageComponent,
-    canActivate: [companyMemberGuard],
-  },
-  {
-    path: 'chat/:projectId',
-    component: ChatPageComponent,
     canActivate: [companyMemberGuard],
   },
   { path: '**', redirectTo: '' },

@@ -31,6 +31,19 @@
           Board
         </a>
 
+        <span class="text-slate-600">/</span>
+
+        <button
+          (click)="chatPanel.toggle()"
+          class="transition"
+          [class.text-white]="chatPanel.isOpen()"
+          [class.font-semibold]="chatPanel.isOpen()"
+          [class.text-slate-300]="!chatPanel.isOpen()"
+          [class.hover:text-white]="!chatPanel.isOpen()"
+        >
+          Chat
+        </button>
+
         <ng-container *ngIf="isCompany()">
           <span class="text-slate-600">/</span>
 

@@ -2,7 +2,8 @@
 import { Component, computed, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import { filter } from 'rxjs/operators';
-import {AuthStoreService} from '../../core/services/auth-store.service';
+import { AuthStoreService } from '../../core/services/auth-store.service';
+import { ChatPanelService } from '../../core/services/chat-panel.service';
 
 @Component({
   selector: 'app-sub-header',
@@ -12,17 +13,26 @@ import {AuthStoreService} from '../../core/services/auth-store.service';
 })
 export class SubHeaderComponent {
   projectId = signal<number | null>(null);
-
   isCompany = computed(() => this.auth.isCompany());
 
-  constructor(public auth: AuthStoreService, private router: Router) {}
+  constructor(
+    public auth: AuthStoreService,
+    public chatPanel: ChatPanelService,
+    private router: Router,
+  ) {}
 
   ngOnInit() {
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
-      .subscribe(() => this.projectId.set(this.extractProjectId(this.router.url)));
+      .subscribe(() => this.updateProjectId(this.router.url));
 
-    this.projectId.set(this.extractProjectId(this.router.url));
+    this.updateProjectId(this.router.url);
+  }
+
+  private updateProjectId(url: string): void {
+    const id = this.extractProjectId(url);
+    this.projectId.set(id);
+    this.chatPanel.setProjectId(id);
   }
 
   private extractProjectId(url: string): number | null {

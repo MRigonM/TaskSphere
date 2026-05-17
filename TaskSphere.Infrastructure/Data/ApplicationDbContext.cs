@@ -35,6 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<Project> Projects { get; set; }
     public DbSet<Sprint> Sprints { get; set; }
     public DbSet<Task> Tasks { get; set; }
+    public DbSet<ChatMessage> ChatMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -172,6 +173,27 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .WithMany(p => p.Tasks)
                 .HasForeignKey(t => t.ProjectId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasQueryFilter(m => !m.IsDeleted);
+
+            entity.Property(m => m.Content)
+                .HasMaxLength(2000);
+
+            entity.Property(m => m.ImageUrl)
+                .HasMaxLength(500);
+
+            entity.HasOne(m => m.Project)
+                .WithMany()
+                .HasForeignKey(m => m.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(m => m.Sender)
+                .WithMany()
+                .HasForeignKey(m => m.SenderId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

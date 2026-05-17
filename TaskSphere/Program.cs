@@ -6,6 +6,7 @@ using TaskSphere.Extensions;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddFluentValidationClientsideAdapters();
@@ -27,11 +28,20 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = ""
+});
+
 app.UseCors("AllowAngularApp");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<TaskSphere.Hubs.ChatHub>("/hubs/chat");
 
 app.Run();

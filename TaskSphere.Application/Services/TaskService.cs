@@ -9,26 +9,23 @@ namespace TaskSphere.Application.Services;
 
 public class TaskService : ITaskService
 {
-    private readonly ITaskRepository _taskRepository;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IAccessControlService _accessControl;
     private readonly ITaskValidationService _validationService;
-    private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
 
     public TaskService(
-        ITaskRepository taskRepository,
+        IUnitOfWork unitOfWork,
         IAccessControlService accessControl,
         ITaskValidationService validationService,
-        IUnitOfWork unitOfWork,
         IMapper mapper)
     {
-        _taskRepository = taskRepository;
+        _unitOfWork = unitOfWork;
         _accessControl = accessControl;
         _validationService = validationService;
-        _unitOfWork = unitOfWork;
         _mapper = mapper;
     }
-    
+
     public async Task<Result<TaskDto>> GetByIdAsync(int taskId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
     {
         try
@@ -36,7 +33,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
                 return Result<TaskDto>.Failure(EntityError.Forbidden);
 
-            var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
+            var entity = await _unitOfWork.Tasks.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<TaskDto>.Failure(EntityError.NotFound(taskId));
 
             return Result<TaskDto>.Success(_mapper.Map<TaskDto>(entity));
@@ -54,7 +51,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
                 return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
 
-            var list = await _taskRepository.GetByProjectAsync(projectId, companyId, ct);
+            var list = await _unitOfWork.Tasks.GetByProjectAsync(projectId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
         catch
@@ -70,7 +67,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
                 return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
 
-            var list = await _taskRepository.GetBacklogAsync(projectId, companyId, ct);
+            var list = await _unitOfWork.Tasks.GetBacklogAsync(projectId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
         catch
@@ -86,7 +83,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessSprintAsync(companyId, userId, sprintId, ct))
                 return Result<List<TaskDto>>.Failure(EntityError.Forbidden);
 
-            var list = await _taskRepository.GetBySprintAsync(sprintId, companyId, ct);
+            var list = await _unitOfWork.Tasks.GetBySprintAsync(sprintId, companyId, ct);
             return Result<List<TaskDto>>.Success(_mapper.Map<List<TaskDto>>(list));
         }
         catch
@@ -114,7 +111,7 @@ public class TaskService : ITaskService
             entity.Status = validation.Value.Status;
             entity.Priority = validation.Value.Priority;
 
-            await _taskRepository.AddAsync(entity, ct);
+            await _unitOfWork.Tasks.AddAsync(entity, ct);
 
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<int>.Failure(EntityError.CreationFailed);
@@ -134,7 +131,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
                 return Result<TaskDto>.Failure(EntityError.Forbidden);
 
-            var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
+            var entity = await _unitOfWork.Tasks.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<TaskDto>.Failure(EntityError.NotFound(taskId));
 
             var entityProjectId = entity.ProjectId;
@@ -168,10 +165,10 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
                 return Result<bool>.Failure(EntityError.Forbidden);
 
-            var entity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
+            var entity = await _unitOfWork.Tasks.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<bool>.Failure(EntityError.NotFound(taskId));
 
-            await _taskRepository.Delete(entity, ct);
+            await _unitOfWork.Tasks.Delete(entity, ct);
 
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.DeletionUnexpectedError);
@@ -201,7 +198,7 @@ public class TaskService : ITaskService
             if (!moveValidation.IsSuccess)
                 return Result<bool>.Failure(moveValidation.Errors.ToArray());
 
-            await _taskRepository.MoveToSprintAsync(taskId, sprintId, companyId, ct);
+            await _unitOfWork.Tasks.MoveToSprintAsync(taskId, sprintId, companyId, ct);
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
 
@@ -224,7 +221,7 @@ public class TaskService : ITaskService
             if (!isCompanyAdmin && !await _accessControl.CanAccessTaskAsync(companyId, userId, taskId, ct))
                 return Result<bool>.Failure(EntityError.Forbidden);
 
-            await _taskRepository.MoveToBacklogAsync(taskId, companyId, ct);
+            await _unitOfWork.Tasks.MoveToBacklogAsync(taskId, companyId, ct);
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
 
@@ -251,7 +248,7 @@ public class TaskService : ITaskService
             if (!validation.IsSuccess || validation.Value is null)
                 return Result<bool>.Failure(validation.Errors.ToArray());
 
-            await _taskRepository.SetStatusAsync(taskId, companyId, validation.Value, ct);
+            await _unitOfWork.Tasks.SetStatusAsync(taskId, companyId, validation.Value, ct);
 
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
@@ -279,7 +276,7 @@ public class TaskService : ITaskService
             if (!validation.IsSuccess)
                 return Result<bool>.Failure(validation.Errors.ToArray());
 
-            await _taskRepository.AssignAsync(taskId, companyId, validation.Value, ct);
+            await _unitOfWork.Tasks.AssignAsync(taskId, companyId, validation.Value, ct);
 
             var saved = await _unitOfWork.SaveChangesAsync(ct);
             if (saved <= 0) return Result<bool>.Failure(EntityError.NoChangesDetected);
@@ -295,5 +292,4 @@ public class TaskService : ITaskService
             return Result<bool>.Failure(EntityError.UpdateUnexpectedError);
         }
     }
-
 }

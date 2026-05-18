@@ -11,20 +11,17 @@ namespace TaskSphere.Application.Services;
 
 public class ChatService : IChatService
 {
-    private readonly IGenericRepository<ChatMessage, int> _chatRepo;
-    private readonly IAccessControlService _accessControl;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IAccessControlService _accessControl;
     private readonly UserManager<AppUser> _userManager;
 
     public ChatService(
-        IGenericRepository<ChatMessage, int> chatRepo,
-        IAccessControlService accessControl,
         IUnitOfWork unitOfWork,
+        IAccessControlService accessControl,
         UserManager<AppUser> userManager)
     {
-        _chatRepo = chatRepo;
-        _accessControl = accessControl;
         _unitOfWork = unitOfWork;
+        _accessControl = accessControl;
         _userManager = userManager;
     }
 
@@ -45,7 +42,7 @@ public class ChatService : IChatService
             ImageUrl = dto.ImageUrl
         };
 
-        await _chatRepo.AddAsync(message, ct);
+        await _unitOfWork.ChatMessages.AddAsync(message, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         var sender = await _userManager.FindByIdAsync(userId);
@@ -67,7 +64,7 @@ public class ChatService : IChatService
         if (!hasAccess)
             return Result<PagedResult<ChatMessageDto>>.Failure(new Error("Auth.Forbidden", "You do not have access to this project."));
 
-        var query = _chatRepo.GetAll()
+        var query = _unitOfWork.ChatMessages.GetAll()
             .Where(m => m.ProjectId == projectId)
             .OrderByDescending(m => m.CreatedAtUtc);
 

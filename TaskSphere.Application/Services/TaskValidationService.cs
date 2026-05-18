@@ -25,20 +25,12 @@ public class TaskValidationService : ITaskValidationService
     ];
 
     private readonly IAccessControlService _accessControl;
-    private readonly IProjectRepository _projectRepository;
-    private readonly ISprintRepository _sprintRepository;
-    private readonly ITaskRepository _taskRepository;
+    private readonly IReadOnlyUnitOfWork _unitOfWork;
 
-    public TaskValidationService(
-        IAccessControlService accessControl,
-        IProjectRepository projectRepository,
-        ISprintRepository sprintRepository,
-        ITaskRepository taskRepository)
+    public TaskValidationService(IAccessControlService accessControl, IReadOnlyUnitOfWork unitOfWork)
     {
         _accessControl = accessControl;
-        _projectRepository = projectRepository;
-        _sprintRepository = sprintRepository;
-        _taskRepository = taskRepository;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<ValidatedTaskInput>> ValidateTaskCreateAsync(Guid companyId, CreateTaskDto dto, CancellationToken ct = default)
@@ -104,14 +96,14 @@ public class TaskValidationService : ITaskValidationService
 
     public async Task<Result<bool>> ValidateTaskMoveToSprintAsync(Guid companyId, int taskId, int sprintId, CancellationToken ct = default)
     {
-        var taskEntity = await _taskRepository.GetByIdForCompanyAsync(taskId, companyId, ct);
+        var taskEntity = await _unitOfWork.Tasks.GetByIdForCompanyAsync(taskId, companyId, ct);
         if (taskEntity is null)
             return Result<bool>.Failure(EntityError.NotFound(taskId));
 
         if (!taskEntity.ProjectId.HasValue)
             return Result<bool>.Failure("Task project is invalid.");
 
-        var sprint = await _sprintRepository.GetByCompanyAsync(companyId, sprintId, ct);
+        var sprint = await _unitOfWork.Sprints.GetByCompanyAsync(companyId, sprintId, ct);
         if (sprint is null)
             return Result<bool>.Failure("Sprint not found.");
 
@@ -129,7 +121,7 @@ public class TaskValidationService : ITaskValidationService
         string? priority,
         CancellationToken ct)
     {
-        if (!await _projectRepository.CompanyOwnsProjectAsync(companyId, projectId, ct))
+        if (!await _unitOfWork.Projects.CompanyOwnsProjectAsync(companyId, projectId, ct))
             return Result<ValidatedTaskInput>.Failure(new Error("Validation.InvalidProject", "Project not found."));
 
         var normalizedStatus = NormalizeStatus(status);
@@ -142,7 +134,7 @@ public class TaskValidationService : ITaskValidationService
 
         if (sprintId.HasValue)
         {
-            var sprint = await _sprintRepository.GetByCompanyAsync(companyId, sprintId.Value, ct);
+            var sprint = await _unitOfWork.Sprints.GetByCompanyAsync(companyId, sprintId.Value, ct);
             if (sprint is null)
                 return Result<ValidatedTaskInput>.Failure(new Error("Validation.InvalidSprint", "Sprint not found."));
 

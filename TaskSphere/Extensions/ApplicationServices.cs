@@ -46,23 +46,17 @@ public static class ApplicationServices
         services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
         
         services.AddScoped<IUnitOfWork, UnitOfWork>();
-        services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
+        services.AddScoped<IReadOnlyUnitOfWork, UnitOfWork>();
         services.AddScoped<IAccessControlService, AccessControlService>();
-        
-        services.AddScoped<ICompanyService, CompanyService>();
-        services.AddScoped<ICompanyRepository, CompanyRepository>();
 
         services.AddScoped<IAccountService, AccountService>();
-        services.AddScoped<ITaskValidationService, TaskValidationService>();
-        services.AddScoped<ISprintValidationService, SprintValidationService>();
+        services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IProjectService, ProjectService>();
-        services.AddScoped<IProjectRepository, ProjectRepository>();
-        services.AddScoped<IMemberRepository, MemberRepository>();
         services.AddScoped<ISprintService, SprintService>();
-        services.AddScoped<ISprintRepository, SprintRepository>();
-        services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<ITaskValidationService, TaskValidationService>();
+        services.AddScoped<ISprintValidationService, SprintValidationService>();
 
         return services;
     }

@@ -11,21 +11,15 @@ namespace TaskSphere.Application.Services;
 
 public class ProjectService : IProjectService
 {
-    private readonly IProjectRepository _projects;
-    private readonly IMemberRepository _memberRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly UserManager<AppUser> _userManager;
     private readonly IAccessControlService _accessControl;
 
     public ProjectService(
-        IProjectRepository projects,
-        IMemberRepository memberRepository,
         IUnitOfWork unitOfWork,
         UserManager<AppUser> userManager,
         IAccessControlService accessControl)
     {
-        _projects = projects;
-        _memberRepository = memberRepository;
         _unitOfWork = unitOfWork;
         _userManager = userManager;
         _accessControl = accessControl;
@@ -37,13 +31,13 @@ public class ProjectService : IProjectService
         if (string.IsNullOrWhiteSpace(name))
             return Result<ProjectDto>.Failure("Project name is required.");
 
-        var exists = await _projects.GetCompanyProjects(companyId).AnyAsync(p => p.Name == name, ct);
+        var exists = await _unitOfWork.Projects.GetCompanyProjects(companyId).AnyAsync(p => p.Name == name, ct);
         if (exists)
             return Result<ProjectDto>.Failure("Project with same name already exists.");
 
         var project = new Project { Name = name, CompanyId = companyId };
 
-        await _projects.AddAsync(project, ct);
+        await _unitOfWork.Projects.AddAsync(project, ct);
         var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
         if (!saved)
             return Result<ProjectDto>.Failure("Project creation failed.");
@@ -56,20 +50,20 @@ public class ProjectService : IProjectService
         if (!isCompanyAdmin)
             return Result<IEnumerable<ProjectDto>>.Success(await _accessControl.GetAccessibleProjectsAsync(companyId, userId, ct));
 
-        var list = await _projects.GetCompanyProjects(companyId)
+        var list = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .OrderBy(p => p.Name)
             .Select(p => new ProjectDto(p.Id, p.Name))
             .ToListAsync(ct);
 
         return Result<IEnumerable<ProjectDto>>.Success(list);
     }
-    
+
     public async Task<Result<ProjectDto>> GetByIdAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
         if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
             return Result<ProjectDto>.Failure(EntityError.Forbidden);
 
-        var project = await _projects.GetCompanyProjects(companyId)
+        var project = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .Where(p => p.Id == projectId)
             .Select(p => new ProjectDto(p.Id, p.Name))
             .FirstOrDefaultAsync(ct);
@@ -79,7 +73,7 @@ public class ProjectService : IProjectService
 
         return Result<ProjectDto>.Success(project);
     }
-    
+
     public async Task<Result<IEnumerable<ProjectDto>>> GetMembersProjects(Guid companyId, string userId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -94,7 +88,7 @@ public class ProjectService : IProjectService
         if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, projectId, ct))
             return Result<IEnumerable<MemberDto>>.Failure(EntityError.Forbidden);
 
-        var project = await _projects.GetCompanyProjectAsync(companyId, projectId, ct);
+        var project = await _unitOfWork.Projects.GetCompanyProjectAsync(companyId, projectId, ct);
         if (project == null)
             return Result<IEnumerable<MemberDto>>.Failure("Project not found.");
 
@@ -114,14 +108,14 @@ public class ProjectService : IProjectService
 
     public async Task<Result<string>> AddMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default)
     {
-        if (!await _projects.CompanyOwnsProjectAsync(companyId, projectId, ct))
+        if (!await _unitOfWork.Projects.CompanyOwnsProjectAsync(companyId, projectId, ct))
             return Result<string>.Failure("Project not found.");
 
         var user = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId, ct);
         if (user == null)
             return Result<string>.Failure("User not found in your company.");
 
-        var existing = await _memberRepository.GetByProjectAndUserIncludingDeletedAsync(projectId, userId, ct);
+        var existing = await _unitOfWork.Members.GetByProjectAndUserIncludingDeletedAsync(projectId, userId, ct);
 
         if (existing != null)
         {
@@ -129,7 +123,7 @@ public class ProjectService : IProjectService
                 return Result<string>.Failure("User is already in this project.");
 
             ((ISoftDeletion)existing).Undo();
-            await _memberRepository.Update(existing, ct);
+            await _unitOfWork.Members.Update(existing, ct);
 
             var restored = await _unitOfWork.SaveChangesAsync(ct) > 0;
             return restored
@@ -137,7 +131,7 @@ public class ProjectService : IProjectService
                 : Result<string>.Failure("Add member failed.");
         }
 
-        await _memberRepository.AddAsync(new Member { ProjectId = projectId, UserId = userId }, ct);
+        await _unitOfWork.Members.AddAsync(new Member { ProjectId = projectId, UserId = userId }, ct);
 
         var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
         if (!saved)
@@ -148,10 +142,10 @@ public class ProjectService : IProjectService
 
     public async Task<Result<string>> RemoveMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default)
     {
-        if (!await _projects.CompanyOwnsProjectAsync(companyId, projectId, ct))
+        if (!await _unitOfWork.Projects.CompanyOwnsProjectAsync(companyId, projectId, ct))
             return Result<string>.Failure("Project not found.");
 
-        var member = await _memberRepository.GetAll()
+        var member = await _unitOfWork.Members.GetAll()
             .FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
 
         if (member == null)
@@ -160,7 +154,7 @@ public class ProjectService : IProjectService
         member.IsDeleted = true;
         member.DeletedAt = DateTimeOffset.UtcNow;
 
-        await _memberRepository.Update(member, ct);
+        await _unitOfWork.Members.Update(member, ct);
 
         var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
         if (!saved)

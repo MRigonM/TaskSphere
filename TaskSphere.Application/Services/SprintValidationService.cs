@@ -7,18 +7,16 @@ namespace TaskSphere.Application.Services;
 
 public class SprintValidationService : ISprintValidationService
 {
-    private readonly IProjectRepository _projectRepository;
-    private readonly ISprintRepository _sprintRepository;
+    private readonly IReadOnlyUnitOfWork _unitOfWork;
 
-    public SprintValidationService(IProjectRepository projectRepository, ISprintRepository sprintRepository)
+    public SprintValidationService(IReadOnlyUnitOfWork unitOfWork)
     {
-        _projectRepository = projectRepository;
-        _sprintRepository = sprintRepository;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<ValidatedSprintInput>> ValidateSprintCreateAsync(Guid companyId, CreateSprintDto dto, CancellationToken ct = default)
     {
-        if (!await _projectRepository.CompanyOwnsProjectAsync(companyId, dto.ProjectId, ct))
+        if (!await _unitOfWork.Projects.CompanyOwnsProjectAsync(companyId, dto.ProjectId, ct))
             return Result<ValidatedSprintInput>.Failure(new Error("Validation.InvalidProject", "Project not found."));
 
         var name = NormalizeName(dto.Name);
@@ -45,12 +43,12 @@ public class SprintValidationService : ISprintValidationService
 
     public async Task<Result<bool>> ValidateSprintArchiveAsync(Guid companyId, int sprintId, bool isArchived, CancellationToken ct = default)
     {
-        var sprint = await _sprintRepository.GetByCompanyAsync(companyId, sprintId, ct);
+        var sprint = await _unitOfWork.Sprints.GetByCompanyAsync(companyId, sprintId, ct);
         if (sprint is null)
-            return Result<bool>.Failure("Sprint not found.");
+            return Result<bool>.Failure(new Error("Validation.SprintNotFound", "Sprint not found."));
 
         if (isArchived && sprint.IsActive)
-            return Result<bool>.Failure("Active sprint cannot be archived. Set it inactive first.");
+            return Result<bool>.Failure(new Error("Validation.CannotArchiveActiveSprint", "Cannot archive an active sprint."));
 
         return Result<bool>.Success(true);
     }
@@ -59,7 +57,6 @@ public class SprintValidationService : ISprintValidationService
     {
         if (string.IsNullOrWhiteSpace(name))
             return null;
-
         return name.Trim();
     }
 }

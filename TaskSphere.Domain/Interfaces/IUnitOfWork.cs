@@ -1,6 +1,9 @@
-﻿namespace TaskSphere.Domain.Interfaces;
+using TaskSphere.Domain.Entities;
 
-public interface IUnitOfWork
+namespace TaskSphere.Domain.Interfaces;
+
+public interface IUnitOfWork : IReadOnlyUnitOfWork
 {
-    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    IGenericRepository<ChatMessage, int> ChatMessages { get; }
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

@@ -8,6 +8,7 @@ public static class AuditMappingExtensions
     public static AuditLog ToAuditLog(this AuditEntry e) => new()
     {
         Timestamp   = e.Timestamp,
+        CompanyId   = e.CompanyId,
         Username    = e.Username,
         HttpMethod  = e.HttpMethod,
         Path        = e.Path,

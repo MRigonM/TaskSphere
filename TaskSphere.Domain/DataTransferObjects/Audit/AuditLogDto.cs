@@ -20,3 +20,13 @@ public record AuditQueryDto(
     int PageSize = 50);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
+
+public record AuditStatsDto(
+    int TotalRequests,
+    int ActiveUsers,
+    IReadOnlyList<EndpointStatDto> TopEndpoints,
+    IReadOnlyList<DailyStatDto> RequestsPerDay);
+
+public record EndpointStatDto(string Action, int Count);
+
+public record DailyStatDto(DateOnly Date, int Count);

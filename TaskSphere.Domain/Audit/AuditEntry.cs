@@ -3,6 +3,7 @@ namespace TaskSphere.Domain.Audit;
 public sealed record AuditEntry
 {
     public DateTimeOffset Timestamp { get; init; }
+    public Guid? CompanyId { get; init; }
     public string? Username { get; init; }
     public string HttpMethod { get; init; } = "";
     public string Path { get; init; } = "";

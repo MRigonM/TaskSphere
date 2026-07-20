@@ -6,6 +6,7 @@ public class AuditLog
 {
     public int Id { get; set; }
     public DateTimeOffset Timestamp { get; set; }
+    public Guid? CompanyId { get; set; }
 
     [MaxLength(256)]
     public string? Username { get; set; }

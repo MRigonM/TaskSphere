@@ -2,8 +2,11 @@
 using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Application.Services;
+using TaskSphere.Auditing;
+using TaskSphere.Domain.Audit;
 using TaskSphere.Domain.Entities.Identity;
 using TaskSphere.Domain.Interfaces;
+using TaskSphere.Filters;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
 using TaskSphere.Infrastructure.Services;
@@ -57,6 +60,12 @@ public static class ApplicationServices
         services.AddScoped<IChatService, ChatService>();
         services.AddScoped<ITaskValidationService, TaskValidationService>();
         services.AddScoped<ISprintValidationService, SprintValidationService>();
+        
+        //Audit 
+        services.AddTransient<AuditAttribute>();
+        services.AddSingleton<AuditQueue>();
+        services.AddSingleton<SensitiveDataRedactor>();
+        services.AddHostedService<AuditWriterService>();
 
         return services;
     }

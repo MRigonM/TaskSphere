@@ -33,6 +33,7 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
     [HttpPost("CreateUser")]
@@ -51,6 +52,7 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
     [HttpPut("Users/{userId}")]
@@ -60,6 +62,7 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
     [HttpDelete("Users/{userId}")]

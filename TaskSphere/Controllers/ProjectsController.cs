@@ -19,6 +19,7 @@ public class ProjectsController : ApiBaseController
         _projectService = projectService;
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateProjectDto dto, CancellationToken ct)
@@ -58,6 +59,7 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [HttpPost("{projectId:int}/members")]
     public async Task<IActionResult> AddMember(int projectId, [FromBody] AddMemberDto dto, CancellationToken ct)
@@ -66,6 +68,7 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
+    [Audit]
     [Authorize(Roles = Roles.Company)]
     [HttpDelete("{projectId:int}/members/{userId}")]
     public async Task<IActionResult> RemoveMember(int projectId, string userId, CancellationToken ct)

@@ -36,6 +36,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<Sprint> Sprints { get; set; }
     public DbSet<Task> Tasks { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

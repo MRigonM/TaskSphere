@@ -7,4 +7,5 @@ public interface IReadOnlyUnitOfWork
     ISprintRepository Sprints { get; }
     IMemberRepository Members { get; }
     ICompanyRepository Companies { get; }
+    IAuditRepository AuditLogs { get; }
 }

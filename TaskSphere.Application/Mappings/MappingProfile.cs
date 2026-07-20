@@ -1,6 +1,7 @@
 ﻿using TaskSphere.Domain.DataTransferObjects.Task;
 using TaskEntity = TaskSphere.Domain.Entities.Task;
 using AutoMapper;
+using TaskSphere.Domain.DataTransferObjects.Audit;
 using TaskSphere.Domain.DataTransferObjects.Company;
 using TaskSphere.Domain.DataTransferObjects.Sprint;
 using TaskSphere.Domain.Entities;
@@ -11,6 +12,8 @@ public class MappingProfile : Profile
 {
     public MappingProfile()
     {
+        CreateMap<AuditLog, AuditLogDto>();
+
         CreateMap<CompanyDto, Company>()
             .ForMember(dest => dest.Id, opt => opt.Ignore());
         CreateMap<Company, CompanyDto>();

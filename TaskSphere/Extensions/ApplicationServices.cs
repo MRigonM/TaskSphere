@@ -58,6 +58,7 @@ public static class ApplicationServices
         services.AddScoped<ISprintService, SprintService>();
         services.AddScoped<ITaskService, TaskService>();
         services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ITaskValidationService, TaskValidationService>();
         services.AddScoped<ISprintValidationService, SprintValidationService>();
         

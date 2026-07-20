@@ -29,6 +29,9 @@ public class UnitOfWork : IUnitOfWork
     private ICompanyRepository? _companies;
     public ICompanyRepository Companies => _companies ??= new CompanyRepository(_context);
 
+    private IAuditRepository? _auditLogs;
+    public IAuditRepository AuditLogs => _auditLogs ??= new AuditRepository(_context);
+
     private IGenericRepository<ChatMessage, int>? _chatMessages;
     public IGenericRepository<ChatMessage, int> ChatMessages =>
         _chatMessages ??= new GenericRepository<ChatMessage, int>(_context);

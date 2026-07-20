@@ -33,9 +33,12 @@ public sealed class AuditAttribute : Attribute, IAsyncActionFilter
 
         try
         {
+            var companyId = http.Items.TryGetValue("CompanyId", out var cid) && cid is Guid g ? g : (Guid?)null;
+
             var entry = new AuditEntry
             {
                 Timestamp   = timestamp,
+                CompanyId   = companyId,
                 Username    = http.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
                 HttpMethod  = http.Request.Method,
                 Path        = http.Request.Path,

@@ -16,10 +16,15 @@ public class AuditService : IAuditService
         _mapper = mapper;
     }
 
-    public async Task<PagedResult<AuditLogDto>> GetPagedAsync(AuditQueryDto query, CancellationToken ct = default)
+    public async Task<PagedResult<AuditLogDto>> GetPagedAsync(Guid companyId, AuditQueryDto query, CancellationToken ct = default)
     {
-        var paged = await _unitOfWork.AuditLogs.GetPagedAsync(query, ct);
+        var paged = await _unitOfWork.AuditLogs.GetPagedAsync(companyId, query, ct);
         var dtos = _mapper.Map<List<AuditLogDto>>(paged.Items);
         return new PagedResult<AuditLogDto>(dtos, paged.Total, paged.Page, paged.PageSize);
+    }
+
+    public async Task<AuditStatsDto> GetStatsAsync(Guid companyId, int days, CancellationToken ct = default)
+    {
+        return await _unitOfWork.AuditLogs.GetStatsAsync(companyId, days, ct);
     }
 }

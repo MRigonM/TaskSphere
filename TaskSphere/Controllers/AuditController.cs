@@ -22,7 +22,14 @@ public class AuditController : ApiBaseController
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] AuditQueryDto query, CancellationToken ct)
     {
-        var result = await _auditService.GetPagedAsync(query, ct);
+        var result = await _auditService.GetPagedAsync(CompanyId, query, ct);
+        return Ok(result);
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats([FromQuery] int days = 30, CancellationToken ct = default)
+    {
+        var result = await _auditService.GetStatsAsync(CompanyId, days, ct);
         return Ok(result);
     }
 }

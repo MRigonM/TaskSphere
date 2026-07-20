@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(//d D:/projects/personal/**)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet clean *)",
+      "Bash(git add *)",
+      "Bash(cd /d D:/projects/personal/TaskSphere)"
+    ]
+  },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true

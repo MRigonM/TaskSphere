@@ -5,5 +5,6 @@ namespace TaskSphere.Domain.Interfaces;
 
 public interface IAuditRepository
 {
-    Task<PagedResult<AuditLog>> GetPagedAsync(AuditQueryDto query, CancellationToken ct = default);
+    Task<PagedResult<AuditLog>> GetPagedAsync(Guid companyId, AuditQueryDto query, CancellationToken ct = default);
+    Task<AuditStatsDto> GetStatsAsync(Guid companyId, int days, CancellationToken ct = default);
 }

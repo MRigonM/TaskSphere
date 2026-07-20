@@ -27,7 +27,7 @@ public class AuditController : ApiBaseController
     }
 
     [HttpGet("stats")]
-    public async Task<IActionResult> GetStats([FromQuery] int days = 30, CancellationToken ct = default)
+    public async Task<IActionResult> GetStats(CancellationToken ct, [FromQuery] int days = 30)
     {
         var result = await _auditService.GetStatsAsync(CompanyId, days, ct);
         return Ok(result);

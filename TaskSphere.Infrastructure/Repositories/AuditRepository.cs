@@ -65,7 +65,7 @@ public class AuditRepository : IAuditRepository
 
         var dailyCounts = await q
             .Where(a => a.Timestamp >= since)
-            .GroupBy(a => a.Timestamp.Date)
+            .GroupBy(a => a.Timestamp.UtcDateTime.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)
             .ToListAsync(ct);

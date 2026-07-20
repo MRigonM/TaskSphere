@@ -48,13 +48,17 @@ public class AuditRepository : IAuditRepository
         var q = _context.AuditLogs.AsNoTracking()
             .Where(a => a.CompanyId == companyId);
 
-        var total = await q.CountAsync(ct);
+        var aggregate = await q
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                ActiveUsers = g.Select(a => a.Username).Distinct().Count()
+            })
+            .FirstOrDefaultAsync(ct);
 
-        var activeUsers = await q
-            .Where(a => a.Username != null)
-            .Select(a => a.Username)
-            .Distinct()
-            .CountAsync(ct);
+        var total = aggregate?.Total ?? 0;
+        var activeUsers = aggregate?.ActiveUsers ?? 0;
 
         var topEndpoints = await q
             .GroupBy(a => a.Action)

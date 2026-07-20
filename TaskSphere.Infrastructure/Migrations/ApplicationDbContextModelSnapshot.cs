@@ -207,6 +207,9 @@ namespace TaskSphere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_AuditLogs_CompanyId");
+
                     b.ToTable("AuditLogs");
                 });
 

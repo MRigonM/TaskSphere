@@ -62,7 +62,15 @@
             >
               Users
             </a>
-
+            <a
+              *ngIf="auth.isCompany()"
+              routerLink="/dashboard/audit"
+              (click)="closeMenu()"
+              class="block px-3 py-2 text-sm text-slate-200 hover:bg-white/5 transition"
+              role="menuitem"
+            >
+              Audit Log
+            </a>
             <a
               *ngIf="auth.isCompanyMember()"
               routerLink="/dashboard/projects"

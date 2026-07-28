@@ -9,6 +9,13 @@ namespace TaskSphere.Filters;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false)]
 public sealed class AuditAttribute : Attribute, IAsyncActionFilter
 {
+    private readonly string? _description;
+
+    public AuditAttribute(string? description = null)
+    {
+        _description = description;
+    }
+
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var services = context.HttpContext.RequestServices;
@@ -35,16 +42,19 @@ public sealed class AuditAttribute : Attribute, IAsyncActionFilter
         {
             var companyId = http.Items.TryGetValue("CompanyId", out var cid) && cid is Guid g ? g : (Guid?)null;
 
+            var controller = context.RouteData.Values["controller"];
+            var action     = context.RouteData.Values["action"];
+
             var entry = new AuditEntry
             {
                 Timestamp   = timestamp,
                 CompanyId   = companyId,
-                Username    = http.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+                Username    = http.User?.FindFirst(ClaimTypes.Name)?.Value,
                 HttpMethod  = http.Request.Method,
                 Path        = http.Request.Path,
                 Ip          = http.Connection.RemoteIpAddress?.ToString(),
                 UserAgent   = http.Request.Headers.UserAgent.ToString(),
-                Action      = $"{context.RouteData.Values["controller"]}/{context.RouteData.Values["action"]}",
+                Action      = _description ?? $"{controller}/{action}",
                 RequestData = requestData,
                 StatusCode  = executed.HttpContext.Response.StatusCode,
                 DurationMs  = sw.ElapsedMilliseconds,

@@ -60,16 +60,18 @@ public class AuditRepository : IAuditRepository
         var total = aggregate?.Total ?? 0;
         var activeUsers = aggregate?.ActiveUsers ?? 0;
 
-        var topEndpoints = await q
+        var topEndpoints = (await q
             .GroupBy(a => a.Action)
-            .Select(g => new EndpointStatDto(g.Key, g.Count()))
+            .Select(g => new { Action = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .Take(5)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .Select(x => new EndpointStatDto(x.Action, x.Count))
+            .ToList();
 
         var dailyCounts = await q
             .Where(a => a.Timestamp >= since)
-            .GroupBy(a => a.Timestamp.UtcDateTime.Date)
+            .GroupBy(a => a.Timestamp.Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(x => x.Date)
             .ToListAsync(ct);

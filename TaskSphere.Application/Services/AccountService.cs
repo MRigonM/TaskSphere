@@ -299,6 +299,7 @@ public class AccountService : IAccountService
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(ClaimTypes.Name, user.Name),
             new Claim(ClaimTypes.Role, role),
             new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
         };

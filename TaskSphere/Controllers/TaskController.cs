@@ -47,7 +47,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Created a task")]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTaskDto dto, CancellationToken ct)
     {
@@ -55,7 +55,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Updated a task")]
     [HttpPut("{taskId:int}")]
     public async Task<IActionResult> Update(int taskId, [FromBody] UpdateTaskDto dto, CancellationToken ct)
     {
@@ -63,7 +63,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Deleted a task")]
     [HttpDelete("{taskId:int}")]
     public async Task<IActionResult> Delete(int taskId, CancellationToken ct)
     {
@@ -71,7 +71,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Moved task to sprint")]
     [HttpPatch("{taskId:int}/move-to-sprint/{sprintId:int}")]
     public async Task<IActionResult> MoveToSprint(int taskId, int sprintId, CancellationToken ct)
     {
@@ -79,7 +79,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Moved task to backlog")]
     [HttpPatch("{taskId:int}/move-to-backlog")]
     public async Task<IActionResult> MoveToBacklog(int taskId, CancellationToken ct)
     {
@@ -87,7 +87,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Changed task status")]
     [HttpPatch("{taskId:int}/status")]
     public async Task<IActionResult> SetStatus(int taskId, [FromQuery] string status, CancellationToken ct)
     {
@@ -95,7 +95,7 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
-    [Audit]
+    [Audit("Assigned task")]
     [HttpPatch("{taskId:int}/assignee")]
     public async Task<IActionResult> Assign(int taskId, [FromQuery] string? assigneeUserId, CancellationToken ct)
     {

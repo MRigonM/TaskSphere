@@ -3,6 +3,18 @@
     <div>
       <h1 class="text-2xl font-semibold text-white">Projects</h1>
       <p class="text-sm text-slate-400">Create a project and open it.</p>
+
+      <div class="mt-3">
+        <input
+          class="w-48 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-sm uppercase text-white outline-none"
+          placeholder="Go to TS-42"
+          [(ngModel)]="jumpKey"
+          name="jumpKey"
+          [ngModelOptions]="{ standalone: true }"
+          (keyup.enter)="jumpToKey()"
+        />
+        <span *ngIf="jumpError()" class="ml-2 text-xs text-red-300">{{ jumpError() }}</span>
+      </div>
     </div>
   </div>
 
@@ -17,21 +29,36 @@
 
   <form
     *ngIf="isCompany()"
-    (ngSubmit)="createProject()" class="mb-6 flex gap-2">
-    <input
-      class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white outline-none"
-      placeholder="Project name (e.g. Rigon)"
-      [(ngModel)]="name"
-      name="name"
-      required
-    />
+    (ngSubmit)="createProject()" class="mb-6">
+    <div class="flex gap-2">
+      <input
+        class="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white outline-none"
+        placeholder="Project name (e.g. Rigon)"
+        [(ngModel)]="name"
+        name="name"
+        required
+      />
 
-    <button
-      type="submit"
-      class="rounded-xl bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 transition"
-    >
-      Create
-    </button>
+      <input
+        class="w-32 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2 font-mono uppercase text-white outline-none"
+        placeholder="KEY"
+        [(ngModel)]="key"
+        name="key"
+        maxlength="10"
+        required
+      />
+
+      <button
+        type="submit"
+        class="rounded-xl bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 transition"
+      >
+        Create
+      </button>
+    </div>
+    <p class="mt-2 text-xs text-slate-400">
+      The key prefixes every task in this project (e.g. <span class="font-mono">TS-42</span>) and
+      <span class="text-slate-300">cannot be changed later</span>.
+    </p>
   </form>
 
   <div class="grid gap-3">
@@ -41,7 +68,10 @@
       (click)="openProject(p)"
       type="button"
     >
-      <div class="font-semibold text-white">{{ p.name }}</div>
+      <div class="font-semibold text-white">
+        <span class="font-mono text-xs text-slate-400">{{ p.key }}</span>
+        <span class="ml-2">{{ p.name }}</span>
+      </div>
       <div class="text-xs text-slate-400">Open project</div>
     </button>
   </div>

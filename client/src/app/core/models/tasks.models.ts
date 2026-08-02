@@ -21,6 +21,7 @@ export interface UpdateTaskDto {
 
 export interface TaskDto {
   id: number;
+  key?: string | null;
   title: string;
   description?: string | null;
   status: string;

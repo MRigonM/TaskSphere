@@ -6,7 +6,10 @@
     (click)="$event.stopPropagation()"
   >
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">Task Details</h2>
+      <h2 class="text-lg font-semibold">
+        Task Details
+        <span class="ml-2 font-mono text-xs text-slate-400">{{ task.key ?? '#' + task.id }}</span>
+      </h2>
       <button class="text-slate-400 hover:text-white" (click)="close()">✕</button>
     </div>
 

@@ -101,6 +101,19 @@ export class TasksPageComponent {
 
       this.reloadAll();
     });
+
+    this.route.queryParamMap.subscribe(qp => {
+      const taskIdRaw = qp.get('task');
+      if (!taskIdRaw) return;
+
+      const taskId = Number(taskIdRaw);
+      if (!taskId) return;
+
+      this.tasksApi.getById(taskId).subscribe({
+        next: t => this.openTaskDetails(t),
+        error: () => this.error.set('Could not open the requested task.'),
+      });
+    });
   }
 
   isCompanyAdmin(): boolean {

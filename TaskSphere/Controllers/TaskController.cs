@@ -26,6 +26,13 @@ public class TasksController : ApiBaseController
         return FromResult(result);
     }
 
+    [HttpGet("by-key/{key}")]
+    public async Task<IActionResult> GetByKey(string key, CancellationToken ct)
+    {
+        var result = await _taskService.GetByKeyAsync(key, CompanyId, UserId, IsCompanyAdmin, ct);
+        return FromResult(result);
+    }
+
     [HttpGet("project/{projectId:int}")]
     public async Task<IActionResult> GetByProject(int projectId, CancellationToken ct)
     {

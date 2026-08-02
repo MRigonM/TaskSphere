@@ -15,11 +15,16 @@ export class BoardTaskCardComponent {
   @Input({ required: true }) users!: UserDto[];
   @Input() taskTitle: (x: any) => string = (x) => x?.title ?? '';
   @Input() taskStatus: (x: any) => string = (x) => x?.status ?? '';
+  @Input() projectKey = '';
 
   @Output() assigneeChange = new EventEmitter<{ t: any; assigneeUserId: string | null }>();
   @Output() open = new EventEmitter<any>();
 
   protected readonly String = String;
+
+  taskKey(t: TaskEntityDto): string {
+    return this.projectKey && t.number ? `${this.projectKey}-${t.number}` : `#${t.id}`;
+  }
 
   hasUser(id: string | null | undefined): boolean {
     if (!id) return false;

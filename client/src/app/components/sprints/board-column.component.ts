@@ -17,6 +17,7 @@ export class BoardColumnComponent {
   @Input({ required: true }) listId!: string;
   @Input({ required: true }) connectedTo!: string[];
 
+  @Input() projectKey = '';
   @Input() taskTitle: (x: any) => string = (x) => x?.title ?? '';
   @Input() taskStatus: (x: any) => string = (x) => x?.status ?? '';
 

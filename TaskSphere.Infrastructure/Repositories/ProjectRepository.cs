@@ -29,6 +29,12 @@ public class ProjectRepository : GenericRepository<Project, int>, IProjectReposi
                                                && p.Id == projectId, cancellationToken);
     }
 
+    public Task<Project?> GetByKeyAsync(Guid companyId, string key, CancellationToken cancellationToken = default)
+    {
+        return _context.Projects
+            .FirstOrDefaultAsync(p => p.CompanyId == companyId && p.Key == key, cancellationToken);
+    }
+
     public IQueryable<Project> GetCompanyProjects(Guid companyId)
     {
         return _context.Projects.Where(p => p.CompanyId == companyId);

@@ -12,17 +12,20 @@ public class TaskService : ITaskService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAccessControlService _accessControl;
     private readonly ITaskValidationService _validationService;
+    private readonly ITaskNumberAllocator _numberAllocator;
     private readonly IMapper _mapper;
 
     public TaskService(
         IUnitOfWork unitOfWork,
         IAccessControlService accessControl,
         ITaskValidationService validationService,
+        ITaskNumberAllocator numberAllocator,
         IMapper mapper)
     {
         _unitOfWork = unitOfWork;
         _accessControl = accessControl;
         _validationService = validationService;
+        _numberAllocator = numberAllocator;
         _mapper = mapper;
     }
 
@@ -35,6 +38,34 @@ public class TaskService : ITaskService
 
             var entity = await _unitOfWork.Tasks.GetByIdForCompanyAsync(taskId, companyId, ct);
             if (entity is null) return Result<TaskDto>.Failure(EntityError.NotFound(taskId));
+
+            return Result<TaskDto>.Success(_mapper.Map<TaskDto>(entity));
+        }
+        catch
+        {
+            return Result<TaskDto>.Failure(EntityError.RetrievalError);
+        }
+    }
+
+    public async Task<Result<TaskDto>> GetByKeyAsync(string key, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct)
+    {
+        try
+        {
+            var normalized = (key ?? "").Trim().ToUpperInvariant();
+
+            if (!TaskKey.TryParse(normalized, out var parsed))
+                return Result<TaskDto>.Failure("Invalid task key format.");
+
+            var project = await _unitOfWork.Projects.GetByKeyAsync(companyId, parsed.ProjectKey, ct);
+            if (project is null)
+                return Result<TaskDto>.Failure(EntityError.NotFound(key));
+            
+            if (!isCompanyAdmin && !await _accessControl.CanAccessProjectAsync(companyId, userId, project.Id, ct))
+                return Result<TaskDto>.Failure(EntityError.Forbidden);
+
+            var entity = await _unitOfWork.Tasks.GetByProjectAndNumberAsync(project.Id, parsed.Number, companyId, ct);
+            if (entity is null)
+                return Result<TaskDto>.Failure(EntityError.NotFound(key));
 
             return Result<TaskDto>.Success(_mapper.Map<TaskDto>(entity));
         }
@@ -110,6 +141,12 @@ public class TaskService : ITaskService
             entity.AssigneeUserId = validation.Value.AssigneeUserId;
             entity.Status = validation.Value.Status;
             entity.Priority = validation.Value.Priority;
+
+            var number = await _numberAllocator.AllocateAsync(dto.ProjectId, ct);
+            if (number is null)
+                return Result<int>.Failure("Project not found.");
+
+            entity.Number = number.Value;
 
             await _unitOfWork.Tasks.AddAsync(entity, ct);
 

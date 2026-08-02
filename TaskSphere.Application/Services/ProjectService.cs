@@ -31,18 +31,42 @@ public class ProjectService : IProjectService
         if (string.IsNullOrWhiteSpace(name))
             return Result<ProjectDto>.Failure("Project name is required.");
 
+        var key = (dto.Key ?? "").Trim().ToUpperInvariant();
+        if (!TaskKey.IsValidProjectKey(key))
+            return Result<ProjectDto>.Failure(
+                "Project key must be 2-10 characters, start with a letter, and contain only letters and digits.");
+
         var exists = await _unitOfWork.Projects.GetCompanyProjects(companyId).AnyAsync(p => p.Name == name, ct);
         if (exists)
             return Result<ProjectDto>.Failure("Project with same name already exists.");
+        
+        var keyTaken = await _unitOfWork.Projects.GetCompanyProjects(companyId)
+            .IgnoreQueryFilters()
+            .AnyAsync(p => p.Key == key, ct);
+        if (keyTaken)
+            return Result<ProjectDto>.Failure("Project key already in use.");
 
-        var project = new Project { Name = name, CompanyId = companyId };
+        var project = new Project { Name = name, Key = key, CompanyId = companyId };
 
         await _unitOfWork.Projects.AddAsync(project, ct);
-        var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
-        if (!saved)
-            return Result<ProjectDto>.Failure("Project creation failed.");
 
-        return Result<ProjectDto>.Success(new ProjectDto(project.Id, project.Name));
+        try
+        {
+            var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
+            if (!saved)
+                return Result<ProjectDto>.Failure("Project creation failed.");
+        }
+        // The pre-check above can lose a race; the unique index is the real guard.
+        // Matched by index name rather than SQL error number 2601/2627, because
+        // SqlException lives in Microsoft.Data.SqlClient, which this layer must not
+        // reference. Any other DbUpdateException propagates untouched.
+        catch (DbUpdateException ex) when (
+            ex.GetBaseException().Message.Contains("IX_Projects_CompanyId_Key", StringComparison.Ordinal))
+        {
+            return Result<ProjectDto>.Failure("Project key already in use.");
+        }
+
+        return Result<ProjectDto>.Success(new ProjectDto(project.Id, project.Name, project.Key));
     }
 
     public async Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
@@ -52,7 +76,7 @@ public class ProjectService : IProjectService
 
         var list = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .OrderBy(p => p.Name)
-            .Select(p => new ProjectDto(p.Id, p.Name))
+            .Select(p => new ProjectDto(p.Id, p.Name, p.Key))
             .ToListAsync(ct);
 
         return Result<IEnumerable<ProjectDto>>.Success(list);
@@ -65,7 +89,7 @@ public class ProjectService : IProjectService
 
         var project = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .Where(p => p.Id == projectId)
-            .Select(p => new ProjectDto(p.Id, p.Name))
+            .Select(p => new ProjectDto(p.Id, p.Name, p.Key))
             .FirstOrDefaultAsync(ct);
 
         if (project == null)

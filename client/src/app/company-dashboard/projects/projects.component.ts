@@ -9,6 +9,7 @@ import { ProjectsApiService } from './projects.service';
 import {Router} from '@angular/router';
 import {AuthStoreService} from '../../core/services/auth-store.service';
 import {ToastService} from '../../core/services/toast.service';
+import { TasksApiService } from '../../core/services/tasks-api.service';
 
 @Component({
   selector: 'app-project',
@@ -22,12 +23,17 @@ export class ProjectComponent {
   projects = signal<ProjectDto[]>([]);
 
   name = '';
+  key = '';
+
+  jumpKey = '';
+  jumpError = signal<string | null>(null);
 
   constructor(
     private projectsApi: ProjectsApiService,
     private router: Router,
     private authStore: AuthStoreService,
     private toast: ToastService,
+    private tasksApi: TasksApiService,
   ) {}
 
   ngOnInit() {
@@ -57,16 +63,24 @@ export class ProjectComponent {
 
   createProject() {
     const name = this.name.trim();
+    const key = this.key.trim().toUpperCase();
+
     if (!name) return;
+
+    if (!/^[A-Z][A-Z0-9]{1,9}$/.test(key)) {
+      this.error.set('Project key must be 2-10 characters, start with a letter, and contain only letters and digits.');
+      return;
+    }
 
     this.loading.set(true);
     this.error.set(null);
 
     of(null)
       .pipe(
-        switchMap(() => this.projectsApi.create({ name })),
+        switchMap(() => this.projectsApi.create({ name, key })),
         tap((p) => {
           this.name = '';
+          this.key = '';
           if (p) this.projects.set([p, ...this.projects()]);
           this.toast.show('Project was created');
         }),
@@ -77,6 +91,26 @@ export class ProjectComponent {
         finalize(() => this.loading.set(false))
       )
       .subscribe();
+  }
+
+  jumpToKey() {
+    const key = this.jumpKey.trim().toUpperCase();
+    if (!key) return;
+
+    this.jumpError.set(null);
+
+    this.tasksApi.getByKey(key).subscribe({
+      next: (task) => {
+        if (!task?.projectId) {
+          this.jumpError.set(`No task ${key}`);
+          return;
+        }
+
+        this.jumpKey = '';
+        this.router.navigate(['/sprints', task.projectId], { queryParams: { task: task.id } });
+      },
+      error: () => this.jumpError.set(`No task ${key}`),
+    });
   }
 
   openProject(p: ProjectDto) {

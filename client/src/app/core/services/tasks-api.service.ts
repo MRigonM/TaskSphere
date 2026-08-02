@@ -14,6 +14,10 @@ export class TasksApiService {
     return this.http.get<TaskDto>(`${this.base}${taskId}`);
   }
 
+  getByKey(key: string): Observable<TaskDto> {
+    return this.http.get<TaskDto>(`${this.base}by-key/${encodeURIComponent(key)}`);
+  }
+
   getByProject(projectId: number): Observable<TaskDto[]> {
     return this.http.get<TaskDto[]>(`${this.base}project/${projectId}`);
   }

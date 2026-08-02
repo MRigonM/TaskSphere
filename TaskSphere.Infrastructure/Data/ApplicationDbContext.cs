@@ -87,6 +87,18 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .IsRequired()
                 .HasMaxLength(300);
 
+            entity.Property(p => p.Key)
+                .IsRequired()
+                .HasMaxLength(10)
+                .HasDefaultValue("");
+
+            entity.Property(p => p.NextTaskNumber)
+                .IsRequired()
+                .HasDefaultValue(1);
+
+            entity.HasIndex(p => new { p.CompanyId, p.Key })
+                .IsUnique();
+
             entity.HasOne(p => p.Company)
                 .WithMany(c => c.Projects)
                 .HasForeignKey(p => p.CompanyId)
@@ -162,6 +174,14 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .IsRequired()
                 .HasMaxLength(200);
 
+            entity.Property(t => t.Number)
+                .IsRequired()
+                .HasDefaultValue(0);
+            
+            entity.HasIndex(t => new { t.ProjectId, t.Number })
+                .IsUnique()
+                .HasFilter("[ProjectId] IS NOT NULL");
+
             entity.Property(t => t.Status)
                 .IsRequired()
                 .HasMaxLength(50)
@@ -195,6 +215,11 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .WithMany()
                 .HasForeignKey(m => m.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasIndex(a => a.CompanyId);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

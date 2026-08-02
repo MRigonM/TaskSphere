@@ -51,6 +51,7 @@ public static class ApplicationServices
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IReadOnlyUnitOfWork, UnitOfWork>();
         services.AddScoped<IAccessControlService, AccessControlService>();
+        services.AddScoped<ITaskNumberAllocator, TaskNumberAllocator>();
 
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICompanyService, CompanyService>();
@@ -67,6 +68,8 @@ public static class ApplicationServices
         services.AddSingleton<AuditQueue>();
         services.AddSingleton<SensitiveDataRedactor>();
         services.AddHostedService<AuditWriterService>();
+
+        services.AddHostedService<TaskSphere.Startup.TaskKeyBackfillService>();
 
         return services;
     }

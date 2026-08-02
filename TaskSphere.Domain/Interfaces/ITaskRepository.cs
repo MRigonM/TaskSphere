@@ -5,6 +5,7 @@ namespace TaskSphere.Domain.Interfaces;
 public interface ITaskRepository : IGenericRepository<TaskEntity, int>
 {
     Task<TaskEntity?> GetByIdForCompanyAsync(int taskId, Guid companyId, CancellationToken ct);
+    Task<TaskEntity?> GetByProjectAndNumberAsync(int projectId, int number, Guid companyId, CancellationToken ct);
     Task<List<TaskEntity>> GetByProjectAsync(int projectId, Guid companyId, CancellationToken ct);
     Task<List<TaskEntity>> GetBacklogAsync(int projectId, Guid companyId, CancellationToken ct);
     Task<List<TaskEntity>> GetBySprintAsync(int sprintId, Guid companyId, CancellationToken ct);

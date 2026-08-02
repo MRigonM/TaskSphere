@@ -4,6 +4,7 @@ using AutoMapper;
 using TaskSphere.Domain.DataTransferObjects.Audit;
 using TaskSphere.Domain.DataTransferObjects.Company;
 using TaskSphere.Domain.DataTransferObjects.Sprint;
+using TaskSphere.Domain.Common;
 using TaskSphere.Domain.Entities;
 
 namespace TaskSphere.Application.Mappings;
@@ -34,7 +35,9 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.Project, opt => opt.Ignore())
             .ForMember(dest => dest.IsActive, opt => opt.Ignore());
         
-        CreateMap<TaskEntity, TaskDto>();
+        CreateMap<TaskEntity, TaskDto>()
+            .ForMember(dest => dest.Key, opt => opt.MapFrom(src =>
+                TaskKeyFormatter.Format(src.ProjectId, src.Project, src.Number)));
 
         CreateMap<CreateTaskDto, TaskEntity>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
@@ -43,7 +46,8 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.Project, opt => opt.Ignore())
             .ForMember(dest => dest.Sprint, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore())
-            .ForMember(dest => dest.CreatedAtUtc, opt => opt.Ignore());
+            .ForMember(dest => dest.CreatedAtUtc, opt => opt.Ignore())
+            .ForMember(dest => dest.Number, opt => opt.Ignore());
 
         CreateMap<UpdateTaskDto, TaskEntity>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
@@ -54,6 +58,7 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.Sprint, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAtUtc, opt => opt.Ignore())
-            .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Title.Trim()));
+            .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Title.Trim()))
+            .ForMember(dest => dest.Number, opt => opt.Ignore());
     }
 }

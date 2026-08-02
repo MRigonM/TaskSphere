@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskSphere.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TaskSphere.Infrastructure.Data;
 namespace TaskSphere.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801004917_AddTaskKeyColumns")]
+    partial class AddTaskKeyColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -454,8 +457,7 @@ namespace TaskSphere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CompanyId", "Key")
-                        .IsUnique();
+                    b.HasIndex("CompanyId");
 
                     b.ToTable("Projects");
                 });
@@ -582,11 +584,9 @@ namespace TaskSphere.Infrastructure.Migrations
 
                     b.HasIndex("CompanyId");
 
-                    b.HasIndex("SprintId");
+                    b.HasIndex("ProjectId");
 
-                    b.HasIndex("ProjectId", "Number")
-                        .IsUnique()
-                        .HasFilter("[ProjectId] IS NOT NULL");
+                    b.HasIndex("SprintId");
 
                     b.ToTable("Tasks");
                 });

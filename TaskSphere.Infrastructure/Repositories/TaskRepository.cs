@@ -17,13 +17,24 @@ public class TaskRepository : GenericRepository<TaskEntity, int>, ITaskRepositor
     public async Task<TaskEntity?> GetByIdForCompanyAsync(int taskId, Guid companyId, CancellationToken ct)
     {
         return await _db.Set<TaskEntity>()
+            .Include(t => t.Project)
             .FirstOrDefaultAsync(t => t.Id == taskId && t.CompanyId == companyId, ct);
+    }
+
+    public async Task<TaskEntity?> GetByProjectAndNumberAsync(int projectId, int number, Guid companyId, CancellationToken ct)
+    {
+        return await _db.Set<TaskEntity>()
+            .AsNoTracking()
+            .Include(t => t.Project)
+            .FirstOrDefaultAsync(
+                t => t.ProjectId == projectId && t.Number == number && t.CompanyId == companyId, ct);
     }
 
     public async Task<List<TaskEntity>> GetByProjectAsync(int projectId, Guid companyId, CancellationToken ct)
     {
         return await _db.Set<TaskEntity>()
             .AsNoTracking()
+            .Include(t => t.Project)
             .Where(t => t.CompanyId == companyId && t.ProjectId == projectId)
             .OrderByDescending(t => t.CreatedAtUtc)
             .ToListAsync(ct);
@@ -33,6 +44,7 @@ public class TaskRepository : GenericRepository<TaskEntity, int>, ITaskRepositor
     {
         return await _db.Set<TaskEntity>()
             .AsNoTracking()
+            .Include(t => t.Project)
             .Where(t =>
                 t.CompanyId == companyId &&
                 t.ProjectId == projectId &&
@@ -45,6 +57,7 @@ public class TaskRepository : GenericRepository<TaskEntity, int>, ITaskRepositor
     {
         return await _db.Set<TaskEntity>()
             .AsNoTracking()
+            .Include(t => t.Project)
             .Where(t => t.CompanyId == companyId && t.SprintId == sprintId)
             .OrderByDescending(t => t.CreatedAtUtc)
             .ToListAsync(ct);

@@ -3,6 +3,7 @@ namespace TaskSphere.Domain.Entities;
 public class Task : BaseEntity<int>
 {
     public string Title { get; set; } = "";
+    public int Number { get; set; }
     public string? Description { get; set; }
     public string Status { get; set; } = "Open";
     public string? Priority { get; set; }

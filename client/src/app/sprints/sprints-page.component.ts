@@ -37,6 +37,7 @@ export class SprintsPageComponent {
   statuses = ['Open', 'InProgress', 'Blocked', 'Done'];
   projectId = signal<number>(0);
   projectName = signal<string>('');
+  projectKey = signal<string>('');
   includeArchived = signal(false);
 
   sprints = signal<SprintDto[]>([]);
@@ -85,14 +86,35 @@ export class SprintsPageComponent {
 
       this.projectId.set(id);
       this.projectName.set('');
+      this.projectKey.set('');
 
       if (id) {
         this.projectsApi.getById(id).subscribe({
-          next: p => this.projectName.set(p.name),
-          error: () => this.projectName.set(''),
+          next: p => {
+            this.projectName.set(p.name);
+            this.projectKey.set(p.key ?? '');
+          },
+          error: () => {
+            this.projectName.set('');
+            this.projectKey.set('');
+          },
         });
       }
     });
+
+    this.route.queryParamMap.subscribe(qp => {
+      const taskIdRaw = qp.get('task');
+      if (!taskIdRaw) return;
+
+      const taskId = Number(taskIdRaw);
+      if (!taskId) return;
+
+      this.tasksApi.getById(taskId).subscribe({
+        next: t => this.openTaskDetails(t),
+        error: () => this.error.set('Could not open the requested task.'),
+      });
+    });
+
     this.loadProjectMembers();
     this.loadSprints(true);
   }

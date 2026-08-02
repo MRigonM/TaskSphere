@@ -6,6 +6,7 @@ namespace TaskSphere.Application.Interfaces;
 public interface ITaskService
 {
     Task<Result<TaskDto>> GetByIdAsync(int taskId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct);
+    Task<Result<TaskDto>> GetByKeyAsync(string key, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct);
     Task<Result<List<TaskDto>>> GetByProjectAsync(int projectId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct);
     Task<Result<List<TaskDto>>> GetBacklogAsync(int projectId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct);
     Task<Result<List<TaskDto>>> GetBySprintAsync(int sprintId, Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct);

@@ -1,10 +1,12 @@
 ﻿export interface CreateProjectDto {
   name: string;
+  key: string;
 }
 
 export interface ProjectDto {
   id: number;
   name: string;
+  key: string;
 }
 
 export interface AddMemberDto {

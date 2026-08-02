@@ -1,8 +1,8 @@
 namespace TaskSphere.Domain.DataTransferObjects.Project;
 
-public record CreateProjectDto(string Name);
+public record CreateProjectDto(string Name, string Key);
 
-public record ProjectDto(int Id, string Name);
+public record ProjectDto(int Id, string Name, string Key);
 
 public record AddMemberDto(string UserId);
 

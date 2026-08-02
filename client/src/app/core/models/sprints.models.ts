@@ -24,6 +24,7 @@ export interface SprintDto {
 
 export interface TaskEntityDto {
   id: number;
+  number?: number | null;
   title?: string | null;
   name?: string | null;
   description?: string | null;

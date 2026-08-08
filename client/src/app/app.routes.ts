@@ -12,6 +12,8 @@ import { companyMemberGuard } from './core/guards/company-member.guard';
 import { ProjectPageComponent } from './company-dashboard/projects/project-page.component';
 import { ProjectSprintsComponent } from './company-dashboard/projects/project-sprints.component';
 import { AuditDashboardComponent } from './company-dashboard/audit/audit-dashboard.component';
+import { GitHubConnectionComponent } from './company-dashboard/github/github-connection.component';
+import { GitHubCallbackComponent } from './company-dashboard/github/github-callback.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -19,6 +21,8 @@ export const routes: Routes = [
   { path: 'account/register', component: RegisterComponent, canActivate: [guestGuard] },
   { path: 'dashboard/users', component: UsersDashboardComponent, canActivate: [companyGuard] },
   { path: 'dashboard/audit', component: AuditDashboardComponent, canActivate: [companyGuard] },
+  { path: 'dashboard/github', component: GitHubConnectionComponent, canActivate: [companyGuard] },
+  { path: 'github/callback', component: GitHubCallbackComponent, canActivate: [companyGuard] },
   { path: 'dashboard/projects', component: ProjectComponent, canActivate: [companyMemberGuard] },
   { path: 'dashboard/projects/:projectId', component: ProjectPageComponent, canActivate: [companyGuard] },
   { path: 'dashboard/projects/sprints/:projectId', component: ProjectSprintsComponent, canActivate: [companyGuard] },

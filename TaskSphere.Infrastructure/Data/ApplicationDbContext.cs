@@ -37,6 +37,9 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<Task> Tasks { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<GitHubInstallation> GitHubInstallations { get; set; }
+    public DbSet<GitHubRepository> GitHubRepositories { get; set; }
+    public DbSet<ProjectRepositoryLink> ProjectRepositoryLinks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -220,6 +223,73 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
         modelBuilder.Entity<AuditLog>(entity =>
         {
             entity.HasIndex(a => a.CompanyId);
+        });
+
+        modelBuilder.Entity<GitHubInstallation>(entity =>
+        {
+            entity.HasQueryFilter(i => !i.IsDeleted);
+
+            entity.Property(i => i.AccountLogin)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(i => i.AccountType)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            // Deliberately not filtered on IsDeleted: GitHub issues a new InstallationId
+            // on reinstall, so ids never recycle. Lookups must use IgnoreQueryFilters().
+            entity.HasIndex(i => i.InstallationId)
+                .IsUnique();
+
+            entity.HasOne(i => i.Company)
+                .WithMany()
+                .HasForeignKey(i => i.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GitHubRepository>(entity =>
+        {
+            entity.HasQueryFilter(r => !r.IsDeleted);
+
+            entity.Property(r => r.FullName)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(r => r.DefaultBranch)
+                .HasMaxLength(255);
+
+            entity.HasIndex(r => r.RepositoryId)
+                .IsUnique();
+
+            entity.HasOne(r => r.Installation)
+                .WithMany(i => i.Repositories)
+                .HasForeignKey(r => r.GitHubInstallationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ProjectRepositoryLink>(entity =>
+        {
+            entity.HasQueryFilter(l => !l.IsDeleted);
+
+            entity.Property(l => l.LinkedByUserId)
+                .IsRequired()
+                .HasMaxLength(450);
+
+            // Filtered, unlike the two above: unlink then relink must be legal.
+            entity.HasIndex(l => new { l.ProjectId, l.GitHubRepositoryId })
+                .IsUnique()
+                .HasFilter("[IsDeleted] = 0");
+
+            entity.HasOne(l => l.Project)
+                .WithMany()
+                .HasForeignKey(l => l.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(l => l.Repository)
+                .WithMany()
+                .HasForeignKey(l => l.GitHubRepositoryId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

@@ -5,11 +5,30 @@
       "Bash(dotnet build *)",
       "Bash(dotnet clean *)",
       "Bash(git add *)",
-      "Bash(cd /d D:/projects/personal/TaskSphere)"
+      "Bash(cd /d D:/projects/personal/TaskSphere)",
+      "PowerShell(git -C D:\\\\projects\\\\personal\\\\TaskSphere status --short --branch)",
+      "PowerShell(git -C D:\\\\projects\\\\personal\\\\TaskSphere log --oneline -1)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet ef *)",
+      "Bash(codegraph --version)",
+      "Bash(codegraph --help)",
+      "Bash(grep -Ev \"NU1903|warning CS|^$\")",
+      "Bash(npx ng *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"=== TSC EXIT: $? ===\")",
+      "Bash(git check-ignore *)",
+      "Bash(cp src/app/company-dashboard/github/github-connection.component.ts /c/Users/LENOVO~1/AppData/Local/Temp/claude/D--projects-personal-TaskSphere/c6c71682-1c33-480f-8e04-68bd3693b90a/scratchpad/conn.bak)",
+      "Bash(cp src/app/company-dashboard/github/github-callback.component.ts /c/Users/LENOVO~1/AppData/Local/Temp/claude/D--projects-personal-TaskSphere/c6c71682-1c33-480f-8e04-68bd3693b90a/scratchpad/cb.bak)",
+      "Bash(cp /c/Users/LENOVO~1/AppData/Local/Temp/claude/D--projects-personal-TaskSphere/c6c71682-1c33-480f-8e04-68bd3693b90a/scratchpad/conn.bak src/app/company-dashboard/github/github-connection.component.ts)",
+      "Bash(cp /c/Users/LENOVO~1/AppData/Local/Temp/claude/D--projects-personal-TaskSphere/c6c71682-1c33-480f-8e04-68bd3693b90a/scratchpad/cb.bak src/app/company-dashboard/github/github-callback.component.ts)",
+      "Bash(gh auth *)",
+      "Bash(gh --version)",
+      "Bash(git commit -q -m ' *)"
     ]
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true
-  }
+  },
+  "outputStyle": "default"
 }

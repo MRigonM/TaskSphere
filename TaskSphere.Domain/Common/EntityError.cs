@@ -5,6 +5,9 @@ public class EntityError
     public static Error NotFound(int id) => new Error($"NotFound", $"ID {id} was not found.");
     public static Error NotFound(string key) => new Error("NotFound", $"'{key}' was not found.");
     public static Error Forbidden => new Error("Auth.Forbidden", "You do not have access to this resource.");
+    // Delegates to Error.Conflict rather than repeating the code string. Exists so call sites
+    // stay uniform: services in this codebase reach for EntityError.*, not Error.*.
+    public static Error Conflict(string message) => Error.Conflict(message);
     public static Error InvalidAssignee => new Error("Validation.InvalidAssignee", "Assignee must be a member of the task's project.");
 
     public static Error NoChangesDetected => new Error($"NoChanges", "No changes were detected during the operation.");

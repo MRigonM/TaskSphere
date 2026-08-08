@@ -32,6 +32,18 @@ public class UnitOfWork : IUnitOfWork
     private IAuditRepository? _auditLogs;
     public IAuditRepository AuditLogs => _auditLogs ??= new AuditRepository(_context);
 
+    private IGitHubInstallationRepository? _gitHubInstallations;
+    public IGitHubInstallationRepository GitHubInstallations =>
+        _gitHubInstallations ??= new GitHubInstallationRepository(_context);
+
+    private IGitHubRepositoryRepository? _gitHubRepositories;
+    public IGitHubRepositoryRepository GitHubRepositories =>
+        _gitHubRepositories ??= new GitHubRepositoryRepository(_context);
+
+    private IProjectRepositoryLinkRepository? _projectRepositoryLinks;
+    public IProjectRepositoryLinkRepository ProjectRepositoryLinks =>
+        _projectRepositoryLinks ??= new ProjectRepositoryLinkRepository(_context);
+
     private IGenericRepository<ChatMessage, int>? _chatMessages;
     public IGenericRepository<ChatMessage, int> ChatMessages =>
         _chatMessages ??= new GenericRepository<ChatMessage, int>(_context);

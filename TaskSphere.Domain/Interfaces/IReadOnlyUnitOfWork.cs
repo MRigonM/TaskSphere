@@ -8,4 +8,7 @@ public interface IReadOnlyUnitOfWork
     IMemberRepository Members { get; }
     ICompanyRepository Companies { get; }
     IAuditRepository AuditLogs { get; }
+    IGitHubInstallationRepository GitHubInstallations { get; }
+    IGitHubRepositoryRepository GitHubRepositories { get; }
+    IProjectRepositoryLinkRepository ProjectRepositoryLinks { get; }
 }

@@ -17,24 +17,29 @@ public class MappingProfile : Profile
         CreateMap<AuditLog, AuditLogDto>();
 
         CreateMap<CompanyDto, Company>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore());
+            .IgnoreLifecycle()
+            .ForMember(dest => dest.Users, opt => opt.Ignore())
+            .ForMember(dest => dest.Projects, opt => opt.Ignore())
+            .ForMember(dest => dest.Sprints, opt => opt.Ignore());
         CreateMap<Company, CompanyDto>();
 
         CreateMap<Sprint, SprintDto>();
 
         CreateMap<CreateSprintDto, Sprint>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .IgnoreLifecycle()
             .ForMember(dest => dest.CompanyId, opt => opt.Ignore())
             .ForMember(dest => dest.Company, opt => opt.Ignore())
-            .ForMember(dest => dest.Project, opt => opt.Ignore());
+            .ForMember(dest => dest.Project, opt => opt.Ignore())
+            .ForMember(dest => dest.IsArchived, opt => opt.Ignore());
 
         CreateMap<UpdateSprintDto, Sprint>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .IgnoreLifecycle()
             .ForMember(dest => dest.CompanyId, opt => opt.Ignore())
             .ForMember(dest => dest.Company, opt => opt.Ignore())
             .ForMember(dest => dest.ProjectId, opt => opt.Ignore())
             .ForMember(dest => dest.Project, opt => opt.Ignore())
-            .ForMember(dest => dest.IsActive, opt => opt.Ignore());
+            .ForMember(dest => dest.IsActive, opt => opt.Ignore())
+            .ForMember(dest => dest.IsArchived, opt => opt.Ignore());
         
         CreateMap<GitHubInstallation, GitHubInstallationDto>();
         CreateMap<GitHubRepository, GitHubRepositoryDto>();
@@ -52,24 +57,22 @@ public class MappingProfile : Profile
                 TaskKeyFormatter.Format(src.ProjectId, src.Project, src.Number)));
 
         CreateMap<CreateTaskDto, TaskEntity>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .IgnoreLifecycle()
             .ForMember(dest => dest.CompanyId, opt => opt.Ignore())
             .ForMember(dest => dest.Company, opt => opt.Ignore())
             .ForMember(dest => dest.Project, opt => opt.Ignore())
             .ForMember(dest => dest.Sprint, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore())
-            .ForMember(dest => dest.CreatedAtUtc, opt => opt.Ignore())
             .ForMember(dest => dest.Number, opt => opt.Ignore());
 
         CreateMap<UpdateTaskDto, TaskEntity>()
-            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .IgnoreLifecycle()
             .ForMember(dest => dest.CompanyId, opt => opt.Ignore())
             .ForMember(dest => dest.Company, opt => opt.Ignore())
             .ForMember(dest => dest.ProjectId, opt => opt.Ignore())
             .ForMember(dest => dest.Project, opt => opt.Ignore())
             .ForMember(dest => dest.Sprint, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore())
-            .ForMember(dest => dest.CreatedAtUtc, opt => opt.Ignore())
             .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Title.Trim()))
             .ForMember(dest => dest.Number, opt => opt.Ignore());
     }

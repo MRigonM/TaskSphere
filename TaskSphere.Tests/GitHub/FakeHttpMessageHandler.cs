@@ -13,6 +13,14 @@ public class FakeHttpMessageHandler : HttpMessageHandler
     public List<HttpRequestMessage> Requests { get; } = new();
     public List<string?> AuthorizationHeaders { get; } = new();
 
+    /// <summary>
+    /// The request body, read here rather than by the test. Callers dispose their
+    /// <see cref="HttpRequestMessage"/> as soon as the call returns, which disposes its content —
+    /// so a test that reads <c>Requests[i].Content</c> afterwards gets an
+    /// <see cref="ObjectDisposedException"/>, not an assertion failure.
+    /// </summary>
+    public List<string> RequestBodies { get; } = new();
+
     public int CallCount => Requests.Count;
 
     public FakeHttpMessageHandler Enqueue(HttpStatusCode status, string body = "", Action<HttpResponseMessage>? configure = null)
@@ -30,14 +38,17 @@ public class FakeHttpMessageHandler : HttpMessageHandler
         return this;
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests.Add(request);
         AuthorizationHeaders.Add(request.Headers.Authorization?.Parameter);
+        RequestBodies.Add(request.Content is null
+            ? ""
+            : await request.Content.ReadAsStringAsync(cancellationToken));
 
         if (_responses.Count == 0)
             throw new InvalidOperationException($"No queued response for {request.Method} {request.RequestUri}");
 
-        return Task.FromResult(_responses.Dequeue()(request));
+        return _responses.Dequeue()(request);
     }
 }

@@ -41,6 +41,9 @@ public class GitHubUserAuthService : IGitHubUserAuthService
                 ["client_id"] = _options.ClientId,
                 ["client_secret"] = _options.ClientSecret,
                 ["code"] = code,
+                // Must byte-match the App's registered Callback URL or GitHub answers
+                // redirect_uri_mismatch. Supplying it binds the code to this redirect.
+                ["redirect_uri"] = _options.CallbackUrl,
             }),
         };
 

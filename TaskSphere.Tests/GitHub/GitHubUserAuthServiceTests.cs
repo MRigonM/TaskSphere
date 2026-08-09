@@ -71,6 +71,24 @@ public class GitHubUserAuthServiceTests
     }
 
     [Fact]
+    public async Task ExchangeCode_SendsTheRegisteredRedirectUri()
+    {
+        // GitHub validates redirect_uri against the App's registered Callback URL when it is
+        // supplied, so a leaked code cannot be redeemed against an attacker's redirect. It is
+        // also the only thing that reads GitHub:CallbackUrl, which the options validator
+        // requires at startup.
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, """{"access_token":"gho_user"}""");
+
+        await NewService(handler).ExchangeCodeForUserTokenAsync("the-code");
+
+        var body = handler.RequestBodies[0];
+
+        Assert.Contains("redirect_uri=", body);
+        Assert.Contains(Uri.EscapeDataString("https://localhost:4200/github/callback"), body);
+    }
+
+    [Fact]
     public async Task ExchangeCode_BadVerificationCode_IsAResultFailure_NotAnException()
     {
         // GitHub answers 200 with an error body for this case, which is why status-code-only

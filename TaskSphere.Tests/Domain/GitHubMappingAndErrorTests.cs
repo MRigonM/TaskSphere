@@ -12,11 +12,16 @@ public class GitHubMappingAndErrorTests
     private static IMapper NewMapper()
         => new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>()).CreateMapper();
 
-    // NOTE: a whole-profile AssertConfigurationIsValid() cannot be asserted here. Five
-    // pre-existing DTO -> entity maps (CompanyDto, CreateSprintDto, UpdateSprintDto,
-    // CreateTaskDto, UpdateTaskDto) leave IsDeleted / DeletedAt / UpdatedAtUtc unmapped, so
-    // the profile has never passed that check. Fixing them is outside sub-project B1's scope.
-    // The GitHub maps are verified individually below instead.
+    [Fact]
+    public void WholeProfile_IsValid()
+    {
+        // Every destination member must be mapped or explicitly ignored. This is the assertion
+        // the B1 plan asked for and could not have: five DTO -> entity maps left the
+        // BaseEntity<T> lifecycle members unmapped until IgnoreLifecycle() was introduced.
+        var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
+
+        config.AssertConfigurationIsValid();
+    }
 
     [Fact]
     public void InstallationDto_ExposesNoSoftDeleteOrTenantFields()

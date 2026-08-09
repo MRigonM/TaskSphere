@@ -42,7 +42,13 @@ public class GitHubController : ApiBaseController
     /// Completes the install. GitHub redirects the browser to the Angular route, which POSTs
     /// here with a token attached — the redirect itself carries no Authorization header (§0g).
     /// </summary>
-    [Audit("Connected a GitHub organization")]
+    // Deliberately NOT audited. AuditAttribute serialises every action argument, and
+    // SensitiveDataRedactor only redacts property names containing password/token/secret/pwd —
+    // so ConnectGitHubDto.Code and .State would land in AuditLogs verbatim. Extending the
+    // redactor was rejected: IsSensitive matches with Contains, so adding "code" would redact
+    // every action argument whose property name ends in Code. No other request DTO has one
+    // today, but an invite/coupon/postal Code would silently become "***" — too broad a change
+    // to the whole API for one endpoint's problem.
     [HttpPost("callback")]
     public async Task<IActionResult> Callback([FromBody] ConnectGitHubDto dto, CancellationToken ct)
     {

@@ -17,6 +17,13 @@ import { ProjectsApiService } from '../projects/projects.service';
   templateUrl: './github-project-links.component.html',
 })
 export class GitHubProjectLinksComponent implements OnInit {
+  /**
+   * Survives a reload so the screen comes back to the project you were working on. Without it
+   * a refresh drops to "Select a project…" with the Linked list hidden, which looks exactly
+   * like the links were deleted.
+   */
+  private static readonly SelectedProjectKey = 'tasksphere_github_project';
+
   auth = inject(AuthStoreService);
   private projectsApi = inject(ProjectsApiService);
   private links = inject(GitHubProjectLinkService);
@@ -50,7 +57,10 @@ export class GitHubProjectLinksComponent implements OnInit {
     this.projectsApi
       .getAll()
       .pipe(
-        tap(projects => this.projects.set(projects)),
+        tap(projects => {
+          this.projects.set(projects);
+          this.restoreSelection();
+        }),
         catchError(err => {
           this.error.set(apiErrorMessage(err, 'Failed to load the projects.'));
           return of(null);
@@ -59,13 +69,34 @@ export class GitHubProjectLinksComponent implements OnInit {
       .subscribe();
   }
 
+  /**
+   * Only restores an id the company actually has. A stale id left by another tenant or a
+   * deleted project would otherwise be requested on every load and answered with a 404.
+   */
+  private restoreSelection() {
+    const stored = localStorage.getItem(GitHubProjectLinksComponent.SelectedProjectKey);
+    if (!stored) return;
+
+    if (!this.projects().some(p => p.id === +stored)) {
+      localStorage.removeItem(GitHubProjectLinksComponent.SelectedProjectKey);
+      return;
+    }
+
+    this.selectProject(stored);
+  }
+
   selectProject(value: string) {
     const projectId = value ? +value : null;
     this.selectedProjectId.set(projectId);
     this.repositories.set(null);
     this.error.set(null);
 
-    if (projectId === null) return;
+    if (projectId === null) {
+      localStorage.removeItem(GitHubProjectLinksComponent.SelectedProjectKey);
+      return;
+    }
+
+    localStorage.setItem(GitHubProjectLinksComponent.SelectedProjectKey, String(projectId));
 
     this.loading.set(true);
     this.links

@@ -19,14 +19,23 @@
     >Try again</button>
   </div>
 
+  <!--
+    Selected state lives on the options, not on the select's [value]. A [value] binding on the
+    parent is applied before *ngFor has created the options, so a selection restored on load
+    would be assigned to an empty list and silently fall back to the placeholder.
+  -->
   <select
     class="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none"
-    [value]="selectedProjectId() ?? ''"
     (change)="selectProject($any($event.target).value)"
     [disabled]="loading() || busy()"
   >
-    <option value="" class="bg-slate-800 text-white">Select a project…</option>
-    <option *ngFor="let project of projects()" [value]="project.id" class="bg-slate-800 text-white">
+    <option value="" [selected]="selectedProjectId() === null" class="bg-slate-800 text-white">Select a project…</option>
+    <option
+      *ngFor="let project of projects()"
+      [value]="project.id"
+      [selected]="project.id === selectedProjectId()"
+      class="bg-slate-800 text-white"
+    >
       {{ project.key }} · {{ project.name }}
     </option>
   </select>

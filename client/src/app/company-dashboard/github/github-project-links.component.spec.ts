@@ -127,7 +127,46 @@ describe('GitHubProjectLinksComponent', () => {
     } finally {
       TestBed.resetTestingModule();
       localStorage.removeItem('tasksphere_auth');
+      localStorage.removeItem('tasksphere_github_project');
     }
+  });
+
+  /**
+   * The screen used to fetch links only from the select's (change) event, so any reload dropped
+   * back to "Select a project…" with the Linked list hidden — which reads as the link having
+   * been deleted. Reported from a real session on 2026-08-09.
+   */
+  it('restores the last chosen project after a reload and re-reads its links', async () => {
+    localStorage.setItem('tasksphere_github_project', '7');
+
+    const { fixture, http } = await setup();
+
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush(webLinked);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(projectSelect(fixture).value).toBe('7');
+    expect(row(fixture, 'acme-corp/web')).not.toBeNull();
+  });
+
+  it('does not restore a project this company does not have', async () => {
+    // A stale id from another tenant or a deleted project must never be requested — the
+    // afterEach verify() fails if any call goes out.
+    localStorage.setItem('tasksphere_github_project', '999');
+
+    const { fixture } = await setup();
+
+    expect(projectSelect(fixture).value).toBe('');
+    expect(localStorage.getItem('tasksphere_github_project')).toBeNull();
+  });
+
+  it('remembers the chosen project so a reload can restore it', async () => {
+    const { fixture, http } = await setup();
+
+    await chooseProject(fixture, 7);
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush(webLinked);
+
+    expect(localStorage.getItem('tasksphere_github_project')).toBe('7');
   });
 
   it('lists the company projects in the selector', async () => {

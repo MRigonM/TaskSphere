@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { catchError, finalize, of, tap } from 'rxjs';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { RepositorySelection } from '../../core/models/github.models';
 import { AuthStoreService } from '../../core/services/auth-store.service';
 import { GitHubConnectionService } from '../../core/services/github-connection.service';
@@ -40,7 +41,7 @@ export class GitHubConnectionComponent implements OnInit {
           // Drop whatever the singleton still holds: without this a failed reload keeps
           // rendering the previously loaded company's account.
           this.github.clear();
-          this.error.set(this.toMsg(err, 'Failed to load the GitHub connection.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load the GitHub connection.'));
           return of(null);
         }),
         finalize(() => this.loading.set(false))
@@ -56,7 +57,7 @@ export class GitHubConnectionComponent implements OnInit {
       .pipe(
         tap(res => this.github.redirectTo(res.url)),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to start the GitHub install.'));
+          this.error.set(apiErrorMessage(err, 'Failed to start the GitHub install.'));
           this.connecting.set(false); // not reset on success: the browser is navigating to github.com
           return of(null);
         })
@@ -71,22 +72,11 @@ export class GitHubConnectionComponent implements OnInit {
       .disconnect()
       .pipe(
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to disconnect GitHub.'));
+          this.error.set(apiErrorMessage(err, 'Failed to disconnect GitHub.'));
           return of(null);
         }),
         finalize(() => this.disconnecting.set(false))
       )
       .subscribe();
-  }
-
-  /**
-   * A failed API call carries `ApiBaseController.MapErrors`' body: an array of
-   * `{ code, description }`. Anything else is a body we did not produce, so fall back.
-   */
-  private toMsg(err: any, fallback: string): string {
-    const descriptions = Array.isArray(err?.error)
-      ? err.error.map((e: any) => e?.description).filter((d: unknown) => !!d)
-      : [];
-    return descriptions.length ? descriptions.join('\n') : fallback;
   }
 }

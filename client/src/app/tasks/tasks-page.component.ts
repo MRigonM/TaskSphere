@@ -2,6 +2,7 @@
 import { ActivatedRoute } from '@angular/router';
 import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import { catchError, finalize, of, switchMap, tap } from 'rxjs';
+import { apiErrorMessage } from '../core/http/api-error';
 import { TasksApiService } from '../core/services/tasks-api.service';
 import { SprintsApiService } from '../core/services/sprints-api.service';
 import { CreateTaskDto, TaskDto, UpdateTaskDto } from '../core/models/tasks.models';
@@ -145,7 +146,7 @@ export class TasksPageComponent {
       }),
       tap(tasks => this.sprintTasks.set(tasks ?? [])),
       catchError(err => {
-        this.error.set(this.toMsg(err, 'Failed to refresh tasks.'));
+        this.error.set(apiErrorMessage(err, 'Failed to refresh tasks.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -195,7 +196,7 @@ export class TasksPageComponent {
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
 
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load tasks.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load tasks.'));
         this.sprints.set([]);
         this.users.set([]);
         this.backlog.set([]);
@@ -236,7 +237,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to assign task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to assign task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -257,7 +258,7 @@ export class TasksPageComponent {
       switchMap(() => this.tasksApi.getBySprint(s.id)),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprint tasks.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprint tasks.'));
         this.sprintTasks.set([]);
         return of([]);
       }),
@@ -274,7 +275,7 @@ export class TasksPageComponent {
       switchMap(() => this.tasksApi.getBacklog(pid)),
       tap((tasks) => this.backlog.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load backlog.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load backlog.'));
         this.backlog.set([]);
         return of([]);
       }),
@@ -345,7 +346,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to create task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to create task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -407,7 +408,7 @@ export class TasksPageComponent {
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
         if (this.isNoChanges(err)) { this.editing.set(null); return of(null); }
-        this.error.set(this.toMsg(err, 'Failed to update task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -442,7 +443,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to delete task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to delete task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -464,7 +465,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to move task to backlog.'));
+        this.error.set(apiErrorMessage(err, 'Failed to move task to backlog.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -486,7 +487,7 @@ export class TasksPageComponent {
       switchMap(() => this.tasksApi.getBySprint(s.id)),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to move task to sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to move task to sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -508,7 +509,7 @@ export class TasksPageComponent {
       }),
       tap((tasks) => this.sprintTasks.set(tasks ?? [])),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to set status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to set status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -523,12 +524,5 @@ export class TasksPageComponent {
 
   private isNoChanges(err: any): boolean {
     return Array.isArray(err?.error) && err.error.some((e: any) => e?.code === 'NoChanges');
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 }

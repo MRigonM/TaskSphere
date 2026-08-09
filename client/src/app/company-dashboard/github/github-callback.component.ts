@@ -3,6 +3,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, of, tap } from 'rxjs';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { GitHubConnectionService } from '../../core/services/github-connection.service';
 
 @Component({
@@ -40,21 +41,10 @@ export class GitHubCallbackComponent implements OnInit {
       .pipe(
         tap(() => this.router.navigateByUrl('/dashboard/github')),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'The GitHub connection could not be completed.'));
+          this.error.set(apiErrorMessage(err, 'The GitHub connection could not be completed.'));
           return of(null);
         })
       )
       .subscribe();
-  }
-
-  /**
-   * A failed API call carries `ApiBaseController.MapErrors`' body: an array of
-   * `{ code, description }`. Anything else is a body we did not produce, so fall back.
-   */
-  private toMsg(err: any, fallback: string): string {
-    const descriptions = Array.isArray(err?.error)
-      ? err.error.map((e: any) => e?.description).filter((d: unknown) => !!d)
-      : [];
-    return descriptions.length ? descriptions.join('\n') : fallback;
   }
 }

@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterModule } from '@angular/router';
 import { of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -90,7 +91,7 @@ export class ProjectPageComponent {
           this.users.set(list);
         }),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to load users.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load users.'));
           this.users.set([]);
           return of([]);
         }),
@@ -113,7 +114,7 @@ export class ProjectPageComponent {
         switchMap(() => this.projectsApi.getMembers(projectId)),
         tap((res) => this.members.set(res ?? [])),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to load members.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load members.'));
           this.members.set([]);
           return of([]);
         }),
@@ -139,7 +140,7 @@ export class ProjectPageComponent {
         switchMap(() => this.projectsApi.getMembers(projectId)),
         tap((res) => this.members.set(res ?? [])),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to add member.'));
+          this.error.set(apiErrorMessage(err, 'Failed to add member.'));
           return of([]);
         }),
         finalize(() => this.loading.set(false))
@@ -161,18 +162,11 @@ export class ProjectPageComponent {
         switchMap(() => this.projectsApi.getMembers(projectId)),
         tap((res) => this.members.set(res ?? [])),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to remove member.'));
+          this.error.set(apiErrorMessage(err, 'Failed to remove member.'));
           return of([]);
         }),
         finalize(() => this.loading.set(false))
       )
       .subscribe();
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 }

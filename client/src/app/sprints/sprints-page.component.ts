@@ -4,6 +4,7 @@ import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/
 import { finalize, of, switchMap, tap, catchError, map } from 'rxjs';
 import { signal } from '@angular/core';
 
+import { apiErrorMessage } from '../core/http/api-error';
 import { SprintsApiService } from '../core/services/sprints-api.service';
 import { CreateSprintDto, SprintBoardDto, SprintDto, UpdateSprintDto } from '../core/models/sprints.models';
 import {CommonModule, DatePipe} from '@angular/common';
@@ -178,7 +179,7 @@ export class SprintsPageComponent {
         }
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprints.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprints.'));
         this.sprints.set([]);
         this.selectedSprint.set(null);
         this.board.set(null);
@@ -219,7 +220,7 @@ export class SprintsPageComponent {
         this.toast.show(isArchived ? 'Sprint was archived' : 'Sprint was unarchived');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to update sprint archive status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update sprint archive status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -294,7 +295,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to set task status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to set task status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -318,7 +319,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to assign task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to assign task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -371,7 +372,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(sprintId)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprint board.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprint board.'));
         this.board.set(null);
         return of(null);
       }),
@@ -432,7 +433,7 @@ export class SprintsPageComponent {
         this.toast.show('Sprint was created');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to create sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to create sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -499,7 +500,7 @@ export class SprintsPageComponent {
       }),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to update sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -529,7 +530,7 @@ export class SprintsPageComponent {
         this.toast.show(isActive ? 'Sprint was activated' : 'Sprint was deactivated');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to set active flag.'));
+        this.error.set(apiErrorMessage(err, 'Failed to set active flag.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -560,7 +561,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => { this.board.set(b); this.toast.show('Sprint was activated'); }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to activate sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to activate sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -583,13 +584,6 @@ export class SprintsPageComponent {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 
   onBoardDrop(ev: CdkDragDrop<any[]>) {

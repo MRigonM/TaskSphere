@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { catchError, finalize, of, tap } from 'rxjs';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectRepositoriesDto } from '../../core/models/github.models';
 import { ProjectDto } from '../../core/models/projects.models';
 import { AuthStoreService } from '../../core/services/auth-store.service';
@@ -51,7 +52,7 @@ export class GitHubProjectLinksComponent implements OnInit {
       .pipe(
         tap(projects => this.projects.set(projects)),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to load the projects.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load the projects.'));
           return of(null);
         })
       )
@@ -72,7 +73,7 @@ export class GitHubProjectLinksComponent implements OnInit {
       .pipe(
         tap(repositories => this.repositories.set(repositories)),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to load the linked repositories.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load the linked repositories.'));
           return of(null);
         }),
         finalize(() => this.loading.set(false))
@@ -91,7 +92,7 @@ export class GitHubProjectLinksComponent implements OnInit {
       .pipe(
         tap(link => this.repositories.update(r => r && { ...r, links: [...r.links, link] })),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to link the repository.'));
+          this.error.set(apiErrorMessage(err, 'Failed to link the repository.'));
           return of(null);
         }),
         finalize(() => this.busy.set(false))
@@ -118,22 +119,11 @@ export class GitHubProjectLinksComponent implements OnInit {
           )
         ),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to unlink the repository.'));
+          this.error.set(apiErrorMessage(err, 'Failed to unlink the repository.'));
           return of(null);
         }),
         finalize(() => this.busy.set(false))
       )
       .subscribe();
-  }
-
-  /**
-   * A failed API call carries `ApiBaseController.MapErrors`' body: an array of
-   * `{ code, description }`. Anything else is a body we did not produce, so fall back.
-   */
-  private toMsg(err: any, fallback: string): string {
-    const descriptions = Array.isArray(err?.error)
-      ? err.error.map((e: any) => e?.description).filter((d: unknown) => !!d)
-      : [];
-    return descriptions.length ? descriptions.join('\n') : fallback;
   }
 }

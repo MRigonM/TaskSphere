@@ -14,6 +14,11 @@ public class ProjectRepositoryLinkRepository : GenericRepository<ProjectReposito
         _context = context;
     }
 
+    public IQueryable<ProjectRepositoryLink> GetByCompany(Guid companyId)
+    {
+        return _context.ProjectRepositoryLinks.Where(l => l.CompanyId == companyId);
+    }
+
     public IQueryable<ProjectRepositoryLink> GetByProject(Guid companyId, int projectId)
     {
         return _context.ProjectRepositoryLinks

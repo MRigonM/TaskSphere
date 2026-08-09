@@ -485,4 +485,43 @@ public class GitHubLinkAndConnectionTests : IAsyncLifetime
         Assert.False(result.IsSuccess);
         Assert.Equal("NotFound", result.Errors[0].Code);
     }
+
+    // ---- Company-wide links read --------------------------------------------------------
+
+    [Fact]
+    public async SystemTask.Task GetByCompany_ReturnsEveryLinkInTheCompany_AndNothingFromAnother()
+    {
+        await using var seed = NewContext();
+        seed.ProjectRepositoryLinks.AddRange(
+            new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _secondRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = _otherCompanyProjectId,
+                GitHubRepositoryId = _otherCompanyRepositoryId,
+                CompanyId = _otherCompanyId,
+                LinkedByUserId = OutsiderUserId,
+            });
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var links = await new UnitOfWork(db).ProjectRepositoryLinks
+            .GetByCompany(_companyId)
+            .ToListAsync();
+
+        Assert.Equal(2, links.Count);
+        Assert.All(links, l => Assert.Equal(_companyId, l.CompanyId));
+    }
 }

@@ -106,5 +106,21 @@
         </ul>
       </li>
     </ul>
+
+    <!--
+      Load-bearing: a link whose repository was dropped from the installation is filtered out of
+      the table server-side and survives only as this line. Without it the link looks vanished.
+    -->
+    <p
+      *ngFor="let entry of unavailable()"
+      class="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+    >
+      {{ entry.projectKey }} has {{ entry.count }}
+      {{ entry.count === 1 ? 'link to a repository' : 'links to repositories' }}
+      no longer available from this installation. The
+      {{ entry.count === 1 ? 'link is' : 'links are' }} kept — they come back if the
+      {{ entry.count === 1 ? 'repository is' : 'repositories are' }} added to the App on GitHub
+      again.
+    </p>
   </ng-container>
 </div>

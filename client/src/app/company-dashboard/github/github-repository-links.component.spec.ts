@@ -429,4 +429,53 @@ describe('GitHubRepositoryLinksComponent', () => {
     expect(fixture.nativeElement.textContent).toContain("'GitHubRepository' was not found.");
     expect(chipKeys(fixture, 'acme-corp/docs')).toEqual([]);
   });
+
+  it('reports links whose repository is no longer available, per project', async () => {
+    const { fixture } = await setup({
+      repositories: links.repositories,
+      unavailable: [
+        { projectId: 7, projectKey: 'APO', count: 2 },
+        { projectId: 8, projectKey: 'BOR', count: 1 },
+      ],
+    });
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'APO has 2 links to repositories no longer available from this installation'
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'BOR has 1 link to a repository no longer available from this installation'
+    );
+  });
+
+  it('says nothing about unavailable repositories when there are none', async () => {
+    const { fixture } = await setup();
+
+    expect(fixture.nativeElement.textContent).not.toContain('no longer available');
+  });
+
+  it('shows the API error when the links cannot be read', async () => {
+    const { fixture } = await setup(links, { links: 'error' });
+
+    expect(fixture.nativeElement.textContent).toContain('The links could not be read.');
+    // A failed read is unknown, not "nothing is linked" — it must not render a verdict.
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'No repositories are available from this installation.'
+    );
+  });
+
+  it('re-reads both the projects and the links from the error banner', async () => {
+    const { fixture, http } = await setup(links, { links: 'error' });
+
+    Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
+      .find(b => b.textContent?.includes('Try again'))!
+      .click();
+
+    http.expectOne(`${environment.apiUrl}Projects/`).flush(projects);
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush(links);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('The links could not be read.');
+    expect(chipKeys(fixture, 'acme-corp/api')).toEqual(['APO', 'BOR']);
+  });
 });

@@ -23,6 +23,7 @@
   -->
   <select
     class="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none"
+    aria-label="Filter by project"
     (change)="setFilter($any($event.target).value)"
     [disabled]="loading()"
   >

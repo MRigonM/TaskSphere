@@ -138,6 +138,9 @@ describe('GitHubRepositoryLinksComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'No repositories are available from this installation.'
     );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'No repositories are linked to this project yet.'
+    );
   });
 
   it('lists the company projects as filter options, with All projects first', async () => {
@@ -150,6 +153,13 @@ describe('GitHubRepositoryLinksComponent', () => {
     expect(options[0]).toBe('All projects');
     expect(options.some(o => o?.includes('Apollo'))).toBe(true);
     expect(options.some(o => o?.includes('Borealis'))).toBe(true);
+  });
+
+  /** Without it a screen reader announces only "combo box, All projects" — no hint of what it filters. */
+  it('gives the filter an accessible name', async () => {
+    const { fixture } = await setup();
+
+    expect(filterSelect(fixture).getAttribute('aria-label')).toBe('Filter by project');
   });
 
   it('narrows the table to the repositories linked to the chosen project', async () => {
@@ -186,6 +196,26 @@ describe('GitHubRepositoryLinksComponent', () => {
     ]);
   });
 
+  /**
+   * The selection has to survive a re-render, not just the change event that set it: Tasks 9 and
+   * 10 call load() after every mutation, and on 2026-08-09 a select whose selected state was not
+   * bound rebuilt its options and silently dropped the choice.
+   */
+  it('keeps the chosen project selected in the control when the table refetches', async () => {
+    const { fixture, http } = await setup();
+    await filterBy(fixture, '8');
+
+    // Fresh project objects, as a real read returns: *ngFor rebuilds the options, which is the
+    // moment a selection living only in the DOM is lost.
+    fixture.componentInstance.retry();
+    http.expectOne(`${environment.apiUrl}Projects/`).flush(projects.map(p => ({ ...p })));
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush(links);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(filterSelect(fixture).value).toBe('8');
+  });
+
   it('explains an empty filtered table instead of leaving it blank', async () => {
     const { fixture } = await setup({
       repositories: [{ id: 3, fullName: 'acme-corp/docs', projects: [] }],
@@ -217,6 +247,22 @@ describe('GitHubRepositoryLinksComponent', () => {
     );
     expect(fixture.nativeElement.textContent).toContain(
       'Every repository linked to this project has been dropped from the installation'
+    );
+  });
+
+  it("does not blame the filtered project for another project's dropped links", async () => {
+    const { fixture } = await setup({
+      repositories: [{ id: 3, fullName: 'acme-corp/docs', projects: [] }],
+      unavailable: [{ projectId: 8, projectKey: 'BOR', count: 2 }],
+    });
+
+    await filterBy(fixture, '7');
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'No repositories are linked to this project yet.'
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'has been dropped from the installation'
     );
   });
 });

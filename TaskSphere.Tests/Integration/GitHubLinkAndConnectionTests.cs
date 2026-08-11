@@ -524,4 +524,215 @@ public class GitHubLinkAndConnectionTests : IAsyncLifetime
         Assert.Equal(2, links.Count);
         Assert.All(links, l => Assert.Equal(_companyId, l.CompanyId));
     }
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_ReturnsEveryRepositoryWithTheProjectsItIsLinkedTo()
+    {
+        await using var seed = NewContext();
+
+        // A second project so one repository can carry two chips — the case the old screen
+        // could not render, and the reason this endpoint exists.
+        var beta = new Project { Name = "Beta", Key = "BE", CompanyId = _companyId };
+        seed.Projects.Add(beta);
+        await seed.SaveChangesAsync();
+
+        // Both orderings are seeded against their insertion order on purpose: this project's key
+        // sorts first and its id is last, and the repository below does the same. Assert on rows
+        // that arrive in insertion order and the assertions pass with the OrderBy clauses deleted.
+        var aardvark = new Project { Name = "Aardvark", Key = "AA", CompanyId = _companyId };
+        seed.Projects.Add(aardvark);
+
+        var installationId = await seed.GitHubInstallations
+            .Where(i => i.CompanyId == _companyId)
+            .Select(i => i.Id)
+            .SingleAsync();
+
+        var earlyName = new GitHubRepository
+        {
+            RepositoryId = 5003,
+            GitHubInstallationId = installationId,
+            CompanyId = _companyId,
+            FullName = "rigon-org/aardvark",
+            DefaultBranch = "main",
+        };
+        seed.GitHubRepositories.Add(earlyName);
+        await seed.SaveChangesAsync();
+
+        seed.ProjectRepositoryLinks.AddRange(
+            new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = beta.Id,
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = aardvark.Id,
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            });
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(_companyId);
+
+        Assert.True(result.IsSuccess);
+
+        // Ordered by FullName, not by id: aardvark was inserted last and comes first.
+        Assert.Equal(
+            new[] { "rigon-org/aardvark", "rigon-org/alpha", "rigon-org/beta" },
+            result.Value!.Repositories.Select(r => r.FullName));
+
+        // Ordered by Key, not by id or by the order the links were created.
+        var alpha = result.Value.Repositories.Single(r => r.FullName == "rigon-org/alpha");
+        Assert.Equal(new[] { "AA", "AL", "BE" }, alpha.Projects.Select(p => p.Key));
+        Assert.Equal("Alpha", alpha.Projects.Single(p => p.Key == "AL").Name);
+
+        // A repository with no links is still a row — it is how you link the first project to it.
+        var betaRepository = result.Value.Repositories.Single(r => r.FullName == "rigon-org/beta");
+        Assert.Empty(betaRepository.Projects);
+
+        Assert.Empty(result.Value.Unavailable);
+    }
+
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_ReportsLinksWhoseRepositoryIsNoLongerLive()
+    {
+        await using var seed = NewContext();
+        seed.ProjectRepositoryLinks.AddRange(
+            new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _secondRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = MemberUserId,
+            });
+        await seed.SaveChangesAsync();
+
+        // The repository leaves the installation. The link row survives untouched.
+        var dropped = await seed.GitHubRepositories.SingleAsync(r => r.Id == _secondRepositoryId);
+        dropped.IsDeleted = true;
+        dropped.DeletedAt = DateTime.UtcNow;
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(_companyId);
+
+        Assert.True(result.IsSuccess);
+
+        // The dead repository is not a row, and its link is not silently gone either.
+        Assert.Equal(new[] { "rigon-org/alpha" }, result.Value!.Repositories.Select(r => r.FullName));
+
+        var unavailable = Assert.Single(result.Value.Unavailable);
+        Assert.Equal(_projectId, unavailable.ProjectId);
+        Assert.Equal("AL", unavailable.ProjectKey);
+        Assert.Equal(1, unavailable.Count);
+
+        // And the link row itself is still there, ready to come back with the repository.
+        await using var verify = NewContext();
+        Assert.Equal(2, await verify.ProjectRepositoryLinks.CountAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_SkipsLinksWhoseProjectWasDeleted()
+    {
+        // Deleting a project does not cascade to ProjectRepositoryLinks, so this row is real.
+        // It has no project to name and no chip to render, so it is skipped everywhere —
+        // including the unavailable count. Accepted, documented, and out of scope to repair.
+        await using var seed = NewContext();
+        seed.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+        {
+            ProjectId = _projectId,
+            GitHubRepositoryId = _repositoryId,
+            CompanyId = _companyId,
+            LinkedByUserId = MemberUserId,
+        });
+        await seed.SaveChangesAsync();
+
+        var project = await seed.Projects.SingleAsync(p => p.Id == _projectId);
+        project.IsDeleted = true;
+        project.DeletedAt = DateTime.UtcNow;
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(_companyId);
+
+        Assert.True(result.IsSuccess);
+        // The count matters: "every row has no chips" is also true of no rows at all.
+        Assert.Equal(2, result.Value!.Repositories.Count);
+        Assert.All(result.Value.Repositories, r => Assert.Empty(r.Projects));
+        Assert.Empty(result.Value.Unavailable);
+    }
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_WithNoLinksAtAll_SucceedsWithEmptyProjectLists()
+    {
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(_companyId);
+
+        // Success with empty chips, never a failure: "connected, nothing linked yet" is the
+        // normal state of a fresh installation.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Repositories.Count);
+        Assert.All(result.Value.Repositories, r => Assert.Empty(r.Projects));
+        Assert.Empty(result.Value.Unavailable);
+    }
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_ForACompanyWithNoInstallation_ReturnsNothing()
+    {
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(Guid.NewGuid());
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Repositories);
+        Assert.Empty(result.Value.Unavailable);
+    }
+
+    [Fact]
+    public async SystemTask.Task GetCompanyLinks_NeverLeaksAnotherCompanysRepositoriesOrLinks()
+    {
+        // Three reads compose this response and every one of them must be company-scoped. The
+        // endpoint is admin-only, so a scoping slip here hands one tenant another's repository
+        // names and project keys in a single call.
+        await using var seed = NewContext();
+        seed.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+        {
+            ProjectId = _otherCompanyProjectId,
+            GitHubRepositoryId = _otherCompanyRepositoryId,
+            CompanyId = _otherCompanyId,
+            LinkedByUserId = OutsiderUserId,
+        });
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var result = await NewLinkService(db).GetCompanyLinksAsync(_companyId);
+
+        Assert.True(result.IsSuccess);
+        // Positive first: a read that returned nothing at all would satisfy every negative
+        // assertion below it, and a broken companyId predicate is exactly how that happens.
+        Assert.Equal(
+            new[] { "rigon-org/alpha", "rigon-org/beta" },
+            result.Value!.Repositories.Select(r => r.FullName));
+        Assert.DoesNotContain(result.Value.Repositories, r => r.FullName == "foreign-org/secret");
+        Assert.All(result.Value.Repositories, r => Assert.DoesNotContain(r.Projects, p => p.Key == "FR"));
+        Assert.Empty(result.Value.Unavailable);
+    }
 }

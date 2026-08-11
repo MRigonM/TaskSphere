@@ -149,4 +149,57 @@ public class GitHubProjectLinkService : IGitHubProjectLinkService
             _mapper.Map<List<ProjectRepositoryLinkDto>>(live),
             links.Count - live.Count));
     }
+
+    public async Task<Result<CompanyRepositoryLinksDto>> GetCompanyLinksAsync(
+        Guid companyId,
+        CancellationToken cancellationToken = default)
+    {
+        // All three reads are filtered. Nothing here suppresses a query filter, and nothing
+        // Includes the Repository navigation — GitHubRepository is the *required* end of the
+        // link relationship, so an Include renders as an INNER JOIN and silently drops the
+        // links to dead repositories that this endpoint exists to report.
+        var repositories = await _unitOfWork.GitHubRepositories
+            .GetByCompany(companyId)
+            .OrderBy(r => r.FullName)
+            .ToListAsync(cancellationToken);
+
+        var links = await _unitOfWork.ProjectRepositoryLinks
+            .GetByCompany(companyId)
+            .ToListAsync(cancellationToken);
+
+        var projects = await _unitOfWork.Projects
+            .GetCompanyProjects(companyId)
+            .Select(p => new LinkedProjectDto(p.Id, p.Key, p.Name))
+            .ToListAsync(cancellationToken);
+
+        var projectById = projects.ToDictionary(p => p.Id);
+        var liveRepositoryIds = repositories.Select(r => r.Id).ToHashSet();
+
+        // Deleting a project does not cascade to the link table, so a live link can point at a
+        // project that no longer resolves. Skipped, the same way a link to a dead repository is.
+        var resolvable = links.Where(l => projectById.ContainsKey(l.ProjectId)).ToList();
+
+        var projectsByRepository = resolvable
+            .GroupBy(l => l.GitHubRepositoryId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(l => projectById[l.ProjectId]).OrderBy(p => p.Key).ToList());
+
+        var rows = repositories
+            .Select(r => new RepositoryLinksDto(
+                r.Id,
+                r.FullName,
+                projectsByRepository.TryGetValue(r.Id, out var linked) ? linked : []))
+            .ToList();
+
+        var unavailable = resolvable
+            .Where(l => !liveRepositoryIds.Contains(l.GitHubRepositoryId))
+            .GroupBy(l => l.ProjectId)
+            .Select(g => new UnavailableProjectLinksDto(g.Key, projectById[g.Key].Key, g.Count()))
+            .OrderBy(u => u.ProjectKey)
+            .ToList();
+
+        return Result<CompanyRepositoryLinksDto>.Success(
+            new CompanyRepositoryLinksDto(rows, unavailable));
+    }
 }

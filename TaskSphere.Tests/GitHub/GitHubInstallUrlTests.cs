@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Web;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TaskSphere.Controllers;
 using TaskSphere.Domain.Enums;
@@ -120,5 +121,20 @@ public class GitHubInstallUrlTests
     public void GitHubController_RequiresCompany_SoCompanyIdResolves()
     {
         Assert.NotNull(typeof(GitHubController).GetCustomAttribute<RequireCompanyAttribute>());
+    }
+
+    [Fact]
+    public void GetCompanyLinks_DoesNotWidenTheRoleGate()
+    {
+        // GetProjectRepositories deliberately widens to CompanyOrUser because a project Member
+        // can reach it. The company-wide read must NOT: it returns every project's links, so it
+        // stays on the controller's Company-only gate. An [Authorize] here would be a leak.
+        var action = typeof(GitHubController).GetMethod(nameof(GitHubController.GetCompanyLinks));
+
+        Assert.NotNull(action);
+        Assert.Null(action!.GetCustomAttribute<AuthorizeAttribute>());
+
+        // The client hardcodes this route string, and nothing else connects the two.
+        Assert.Equal("links", action.GetCustomAttribute<HttpGetAttribute>()!.Template);
     }
 }

@@ -20,4 +20,11 @@ public interface IGitHubProjectLinkService
     /// caller gets a 403 carrying the "Auth.Forbidden" code (§0h).
     /// </summary>
     Task<Result<ProjectRepositoriesDto>> GetProjectRepositoriesAsync(Guid companyId, string userId, bool isCompanyAdmin, int projectId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every live repository in the company with the projects it is linked to, plus links whose
+    /// repository is no longer live reported as per-project counts. Company-wide and admin-only:
+    /// the route is gated to the Company role, so there is no membership question to answer.
+    /// </summary>
+    Task<Result<CompanyRepositoryLinksDto>> GetCompanyLinksAsync(Guid companyId, CancellationToken cancellationToken = default);
 }

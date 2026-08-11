@@ -98,4 +98,16 @@ public class GitHubController : ApiBaseController
         var result = await _linkService.GetProjectRepositoriesAsync(CompanyId, UserId, IsCompanyAdmin, projectId, ct);
         return FromResult(result);
     }
+
+    /// <summary>
+    /// Company-wide repository↔project links. Inherits the controller's Company-role gate: this
+    /// returns every project's links, so it is not widened the way GetProjectRepositories is.
+    /// Not audited — reads are not audited on this controller.
+    /// </summary>
+    [HttpGet("links")]
+    public async Task<IActionResult> GetCompanyLinks(CancellationToken ct)
+    {
+        var result = await _linkService.GetCompanyLinksAsync(CompanyId, ct);
+        return FromResult(result);
+    }
 }

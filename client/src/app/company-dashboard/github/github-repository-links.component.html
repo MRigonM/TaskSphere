@@ -74,6 +74,13 @@
             class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/80"
           >
             {{ project.key }}
+            <button
+              type="button"
+              (click)="unlink(repository.id, project.id)"
+              [disabled]="busyRepoId() === repository.id"
+              [attr.aria-label]="'Unlink ' + project.key + ' from ' + repository.fullName"
+              class="text-white/50 hover:text-white transition disabled:opacity-50"
+            >×</button>
           </span>
         </div>
       </li>

@@ -65,6 +65,24 @@ export class GitHubRepositoryLinksComponent implements OnInit {
     this.pickerRepoId.set(null);
   }
 
+  unlink(repositoryId: number, projectId: number) {
+    this.busyRepoId.set(repositoryId);
+    this.error.set(null);
+    this.links
+      .unlink(projectId, repositoryId)
+      .pipe(
+        // Refetched, not patched: `unavailable` is derivable only server-side, so a local edit
+        // could leave the table stating something the server would contradict.
+        tap(() => this.load()),
+        catchError(err => {
+          this.error.set(apiErrorMessage(err, 'Failed to unlink the repository.'));
+          return of(null);
+        }),
+        finalize(() => this.busyRepoId.set(null))
+      )
+      .subscribe();
+  }
+
   /**
    * Both reads write the one `error` signal, so it is cleared here rather than inside either of
    * them: clearing it in `load()` would silently wipe a project-read failure that had already

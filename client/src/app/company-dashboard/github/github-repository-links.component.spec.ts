@@ -81,6 +81,15 @@ function chipKeys(fixture: { nativeElement: HTMLElement }, fullName: string): st
   );
 }
 
+function chipButton(
+  fixture: { nativeElement: HTMLElement },
+  fullName: string,
+  projectKey: string
+): HTMLButtonElement | null {
+  const chip = row(fixture, fullName)?.querySelector(`[data-chip="${projectKey}"]`);
+  return (chip?.querySelector('button') as HTMLButtonElement) ?? null;
+}
+
 function filterSelect(fixture: { nativeElement: HTMLElement }): HTMLSelectElement {
   return fixture.nativeElement.querySelector('select') as HTMLSelectElement;
 }
@@ -264,5 +273,73 @@ describe('GitHubRepositoryLinksComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'has been dropped from the installation'
     );
+  });
+
+  it('unlinks a project from the chip, on the project-scoped route', async () => {
+    const { fixture, http } = await setup();
+
+    chipButton(fixture, 'acme-corp/api', 'BOR')!.click();
+
+    // The existing endpoint, driven from the repository side: project 8, repository 1.
+    http
+      .expectOne(
+        r =>
+          r.method === 'DELETE' &&
+          r.url === `${environment.apiUrl}GitHub/projects/8/repositories/1`
+      )
+      .flush(null);
+
+    // The server owns the unavailable counts, so the table is re-read rather than patched.
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush({
+      repositories: [
+        { id: 1, fullName: 'acme-corp/api', projects: [{ id: 7, key: 'APO', name: 'Apollo' }] },
+        { id: 2, fullName: 'acme-corp/web', projects: [{ id: 7, key: 'APO', name: 'Apollo' }] },
+        { id: 3, fullName: 'acme-corp/docs', projects: [] },
+      ],
+      unavailable: [],
+    } satisfies CompanyRepositoryLinksDto);
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(chipKeys(fixture, 'acme-corp/api')).toEqual(['APO']);
+  });
+
+  it('shows the API error and leaves the chip alone when unlinking fails', async () => {
+    const { fixture, http } = await setup();
+
+    chipButton(fixture, 'acme-corp/api', 'BOR')!.click();
+
+    http
+      .expectOne(r => r.method === 'DELETE')
+      .flush(apiError("'ProjectRepositoryLink' was not found."), {
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain("'ProjectRepositoryLink' was not found.");
+    // No refetch on failure, and the chip is still there.
+    expect(chipKeys(fixture, 'acme-corp/api')).toEqual(['APO', 'BOR']);
+  });
+
+  it('disables only the mutating row while its unlink is in flight', async () => {
+    const { fixture, http } = await setup();
+
+    chipButton(fixture, 'acme-corp/api', 'BOR')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(chipButton(fixture, 'acme-corp/api', 'APO')!.disabled).toBe(true);
+    expect(chipButton(fixture, 'acme-corp/web', 'APO')!.disabled).toBe(false);
+
+    http.expectOne(r => r.method === 'DELETE').flush(null);
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush(links);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(chipButton(fixture, 'acme-corp/api', 'APO')!.disabled).toBe(false);
   });
 });

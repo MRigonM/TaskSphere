@@ -81,6 +81,29 @@ function chipKeys(fixture: { nativeElement: HTMLElement }, fullName: string): st
   );
 }
 
+function filterSelect(fixture: { nativeElement: HTMLElement }): HTMLSelectElement {
+  return fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+}
+
+async function filterBy(fixture: any, value: string) {
+  const select = filterSelect(fixture);
+  select.value = value;
+  select.dispatchEvent(new Event('change'));
+  await fixture.whenStable();
+  fixture.detectChanges();
+}
+
+/**
+ * The name is read from its own span, not split out of the row's text: Angular drops the
+ * whitespace-only node between the name and the "not linked" badge, so an unlinked row's
+ * textContent runs them together as "acme-corp/docsnot linked".
+ */
+function repositoryNames(fixture: { nativeElement: HTMLElement }): string[] {
+  return Array.from(fixture.nativeElement.querySelectorAll('li[data-repository]')).map(li =>
+    (li.querySelector('span')?.textContent ?? '').trim()
+  );
+}
+
 describe('GitHubRepositoryLinksComponent', () => {
   afterEach(() => {
     try {
@@ -114,6 +137,86 @@ describe('GitHubRepositoryLinksComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain(
       'No repositories are available from this installation.'
+    );
+  });
+
+  it('lists the company projects as filter options, with All projects first', async () => {
+    const { fixture } = await setup();
+
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('option') as NodeListOf<HTMLOptionElement>
+    ).map(o => o.textContent?.trim());
+
+    expect(options[0]).toBe('All projects');
+    expect(options.some(o => o?.includes('Apollo'))).toBe(true);
+    expect(options.some(o => o?.includes('Borealis'))).toBe(true);
+  });
+
+  it('narrows the table to the repositories linked to the chosen project', async () => {
+    const { fixture } = await setup();
+
+    await filterBy(fixture, '8');
+
+    // Only acme-corp/api is linked to Borealis.
+    expect(repositoryNames(fixture)).toEqual(['acme-corp/api']);
+  });
+
+  /**
+   * Filtering must not narrow the chips. Hiding APO while filtered to BOR would rebuild, inside
+   * the new table, exactly the misreading the new table exists to remove.
+   */
+  it('keeps every chip on a filtered row, not just the filtered project', async () => {
+    const { fixture } = await setup();
+
+    await filterBy(fixture, '8');
+
+    expect(chipKeys(fixture, 'acme-corp/api')).toEqual(['APO', 'BOR']);
+  });
+
+  it('restores the full table when All projects is chosen again', async () => {
+    const { fixture } = await setup();
+
+    await filterBy(fixture, '8');
+    await filterBy(fixture, '');
+
+    expect(repositoryNames(fixture)).toEqual([
+      'acme-corp/api',
+      'acme-corp/web',
+      'acme-corp/docs',
+    ]);
+  });
+
+  it('explains an empty filtered table instead of leaving it blank', async () => {
+    const { fixture } = await setup({
+      repositories: [{ id: 3, fullName: 'acme-corp/docs', projects: [] }],
+      unavailable: [],
+    });
+
+    await filterBy(fixture, '7');
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'No repositories are linked to this project yet.'
+    );
+  });
+
+  /**
+   * The nastiest empty state: the project HAS links, every one of them points at a repository
+   * dropped from the installation. "Nothing linked" would be a lie of exactly the kind this
+   * screen was built to stop telling.
+   */
+  it('does not claim nothing is linked when the only links are to dropped repositories', async () => {
+    const { fixture } = await setup({
+      repositories: [{ id: 3, fullName: 'acme-corp/docs', projects: [] }],
+      unavailable: [{ projectId: 7, projectKey: 'APO', count: 2 }],
+    });
+
+    await filterBy(fixture, '7');
+
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'No repositories are linked to this project yet.'
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Every repository linked to this project has been dropped from the installation'
     );
   });
 });

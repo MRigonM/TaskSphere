@@ -60,6 +60,11 @@ export class GitHubRepositoryLinksComponent implements OnInit {
     this.reload();
   }
 
+  setFilter(value: string) {
+    this.filterProjectId.set(value ? +value : null);
+    this.pickerRepoId.set(null);
+  }
+
   /**
    * Both reads write the one `error` signal, so it is cleared here rather than inside either of
    * them: clearing it in `load()` would silently wipe a project-read failure that had already

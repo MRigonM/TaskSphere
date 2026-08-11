@@ -17,11 +17,46 @@
     >Try again</button>
   </div>
 
+  <!--
+    Selected state lives on the options, not on the select's [value]: a [value] binding on the
+    parent is applied before *ngFor has created the options.
+  -->
+  <select
+    class="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none"
+    (change)="setFilter($any($event.target).value)"
+    [disabled]="loading()"
+  >
+    <option value="" [selected]="filterProjectId() === null" class="bg-slate-800 text-white">All projects</option>
+    <option
+      *ngFor="let project of projects()"
+      [value]="project.id"
+      [selected]="project.id === filterProjectId()"
+      class="bg-slate-800 text-white"
+    >
+      {{ project.key }} · {{ project.name }}
+    </option>
+  </select>
+
   <p *ngIf="loading()" class="mt-3 text-sm text-white/60">Loading…</p>
 
   <ng-container *ngIf="data() as linkData">
     <p *ngIf="!linkData.repositories.length" class="mt-3 text-sm text-white/60">
       No repositories are available from this installation.
+    </p>
+
+    <p
+      *ngIf="linkData.repositories.length && !rows().length && !unavailable().length"
+      class="mt-3 text-sm text-white/60"
+    >
+      No repositories are linked to this project yet.
+    </p>
+
+    <p
+      *ngIf="linkData.repositories.length && !rows().length && unavailable().length"
+      class="mt-3 text-sm text-white/60"
+    >
+      Every repository linked to this project has been dropped from the installation. Nothing has
+      been unlinked — the links return if the repositories are added back to the App on GitHub.
     </p>
 
     <ul *ngIf="rows().length" class="mt-3 divide-y divide-white/10">

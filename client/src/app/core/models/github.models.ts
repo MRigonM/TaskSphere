@@ -53,3 +53,32 @@ export interface ConnectGitHubDto {
   state: string;
   code: string;
 }
+
+export interface LinkedProjectDto {
+  id: number;
+  key: string;
+  name: string;
+}
+
+/** One row of the repository-links table: a live repository and the projects it feeds. */
+export interface RepositoryLinksDto {
+  id: number;
+  fullName: string;
+  projects: LinkedProjectDto[];
+}
+
+/**
+ * Links pointing at a repository that is no longer live, grouped by project. A count and a
+ * project key only — the server cannot name a soft-deleted repository without suppressing a
+ * tenancy filter, and does not.
+ */
+export interface UnavailableProjectLinksDto {
+  projectId: number;
+  projectKey: string;
+  count: number;
+}
+
+export interface CompanyRepositoryLinksDto {
+  repositories: RepositoryLinksDto[];
+  unavailable: UnavailableProjectLinksDto[];
+}

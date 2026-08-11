@@ -3,11 +3,15 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { ProjectRepositoriesDto, ProjectRepositoryLinkDto } from '../models/github.models';
+import {
+  CompanyRepositoryLinksDto,
+  ProjectRepositoriesDto,
+  ProjectRepositoryLinkDto,
+} from '../models/github.models';
 
 /**
- * The three per-project link endpoints. `repositoryId` throughout is the local
- * `GitHubRepository.Id` (`GitHubRepositoryDto.id`), not the GitHub-issued repository id.
+ * The three per-project link endpoints plus the company-wide read. `repositoryId` throughout is
+ * the local `GitHubRepository.Id` (`GitHubRepositoryDto.id`), not the GitHub-issued repository id.
  */
 @Injectable({ providedIn: 'root' })
 export class GitHubProjectLinkService {
@@ -27,5 +31,10 @@ export class GitHubProjectLinkService {
   /** The API answers `Ok()` with no body. */
   unlink(projectId: number, repositoryId: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${projectId}/repositories/${repositoryId}`);
+  }
+
+  /** Company-wide: every repository with the projects it is linked to. Company role only. */
+  getCompanyLinks(): Observable<CompanyRepositoryLinksDto> {
+    return this.http.get<CompanyRepositoryLinksDto>(`${environment.apiUrl}GitHub/links`);
   }
 }

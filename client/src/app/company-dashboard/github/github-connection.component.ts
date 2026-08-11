@@ -6,12 +6,12 @@ import { apiErrorMessage } from '../../core/http/api-error';
 import { RepositorySelection } from '../../core/models/github.models';
 import { AuthStoreService } from '../../core/services/auth-store.service';
 import { GitHubConnectionService } from '../../core/services/github-connection.service';
-import { GitHubProjectLinksComponent } from './github-project-links.component';
+import { GitHubRepositoryLinksComponent } from './github-repository-links.component';
 
 @Component({
   selector: 'app-github-connection',
   standalone: true,
-  imports: [CommonModule, GitHubProjectLinksComponent],
+  imports: [CommonModule, GitHubRepositoryLinksComponent],
   templateUrl: './github-connection.component.html',
 })
 export class GitHubConnectionComponent implements OnInit {

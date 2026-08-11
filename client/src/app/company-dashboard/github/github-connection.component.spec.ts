@@ -89,12 +89,13 @@ function retryButton(fixture: { nativeElement: HTMLElement }): HTMLButtonElement
 }
 
 /**
- * The connected branch renders <app-github-project-links>, which loads the company's projects on
- * init. Drained here so the outstanding request does not fail verify(); its own behaviour is
- * covered in github-project-links.component.spec.ts.
+ * The connected branch renders <app-github-repository-links>, which reads the company's projects
+ * and the company-wide link table on init. Drained here so the outstanding requests do not fail
+ * verify(); its own behaviour is covered in github-repository-links.component.spec.ts.
  */
-function flushProjects(http: HttpTestingController) {
+function flushLinksTable(http: HttpTestingController) {
   http.expectOne(`${environment.apiUrl}Projects/`).flush([]);
+  http.expectOne(`${environment.apiUrl}GitHub/links`).flush({ repositories: [], unavailable: [] });
 }
 
 describe('GitHubConnectionComponent', () => {
@@ -124,7 +125,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connected);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     expect(connectButton(fixture)).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('acme-corp');
@@ -226,7 +227,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connectedWithRepos);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('acme-corp/api');
@@ -246,7 +247,7 @@ describe('GitHubConnectionComponent', () => {
     } satisfies GitHubConnectionDto);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     expect(fixture.nativeElement.textContent).toContain(
       'This list refreshes on demand, so repositories added on GitHub since the last refresh are not shown yet.'
@@ -259,7 +260,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connected);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('does not uninstall the TaskSphere App on GitHub');
@@ -272,7 +273,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connectedWithRepos);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     disconnectButton(fixture)!.click();
 
@@ -296,7 +297,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connectedWithRepos);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     disconnectButton(fixture)!.click();
 
@@ -322,7 +323,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connected);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     // Without this the test would also pass if the connected branch failed to render at all.
     expect(fixture.nativeElement.textContent).toContain('acme-corp');
@@ -343,7 +344,7 @@ describe('GitHubConnectionComponent', () => {
     } satisfies GitHubConnectionDto);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     expect(fixture.nativeElement.textContent).toContain('suspended on GitHub');
   });
@@ -363,7 +364,7 @@ describe('GitHubConnectionComponent', () => {
     http.expectOne(`${environment.apiUrl}GitHub/connection`).flush(connected);
     await fixture.whenStable();
     fixture.detectChanges();
-    flushProjects(http);
+    flushLinksTable(http);
 
     expect(fixture.nativeElement.textContent).toContain('acme-corp');
     expect(fixture.nativeElement.textContent).not.toContain('Upstream is down.');

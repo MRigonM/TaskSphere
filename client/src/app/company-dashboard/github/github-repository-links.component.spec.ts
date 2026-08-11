@@ -90,6 +90,16 @@ function chipButton(
   return (chip?.querySelector('button') as HTMLButtonElement) ?? null;
 }
 
+function addButton(fixture: { nativeElement: HTMLElement }, fullName: string): HTMLButtonElement | null {
+  return (row(fixture, fullName)?.querySelector('button[data-add]') as HTMLButtonElement) ?? null;
+}
+
+function pickerOptions(fixture: { nativeElement: HTMLElement }, fullName: string): string[] {
+  return Array.from(row(fixture, fullName)?.querySelectorAll('button[data-pick]') ?? []).map(b =>
+    (b.textContent ?? '').trim()
+  );
+}
+
 function filterSelect(fixture: { nativeElement: HTMLElement }): HTMLSelectElement {
   return fixture.nativeElement.querySelector('select') as HTMLSelectElement;
 }
@@ -341,5 +351,82 @@ describe('GitHubRepositoryLinksComponent', () => {
     fixture.detectChanges();
 
     expect(chipButton(fixture, 'acme-corp/api', 'APO')!.disabled).toBe(false);
+  });
+
+  it('offers only the projects a repository is not already linked to', async () => {
+    const { fixture } = await setup();
+
+    addButton(fixture, 'acme-corp/web')!.click();
+    fixture.detectChanges();
+
+    // acme-corp/web already has Apollo, so only Borealis is on offer.
+    expect(pickerOptions(fixture, 'acme-corp/web')).toEqual(['BOR · Borealis']);
+  });
+
+  it('gives a fully linked repository nothing to add', async () => {
+    const { fixture } = await setup();
+
+    expect(addButton(fixture, 'acme-corp/api')!.disabled).toBe(true);
+  });
+
+  it('links the chosen project by the local repository id, then refetches', async () => {
+    const { fixture, http } = await setup();
+
+    addButton(fixture, 'acme-corp/docs')!.click();
+    fixture.detectChanges();
+
+    (Array.from(
+      row(fixture, 'acme-corp/docs')!.querySelectorAll('button[data-pick]')
+    ).find(b => b.textContent?.includes('Apollo')) as HTMLButtonElement).click();
+
+    const req = http.expectOne(
+      r => r.method === 'POST' && r.url === `${environment.apiUrl}GitHub/projects/7/repositories`
+    );
+    // The local GitHubRepository PK, not the GitHub-issued repositoryId.
+    expect(req.request.body).toEqual({ repositoryId: 3 });
+    req.flush({
+      id: 12,
+      projectId: 7,
+      gitHubRepositoryId: 3,
+      fullName: 'acme-corp/docs',
+      linkedByUserId: 'u1',
+    });
+
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush({
+      repositories: [
+        ...links.repositories.slice(0, 2),
+        { id: 3, fullName: 'acme-corp/docs', projects: [{ id: 7, key: 'APO', name: 'Apollo' }] },
+      ],
+      unavailable: [],
+    } satisfies CompanyRepositoryLinksDto);
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(chipKeys(fixture, 'acme-corp/docs')).toEqual(['APO']);
+    // The picker closes behind a successful link.
+    expect(pickerOptions(fixture, 'acme-corp/docs')).toEqual([]);
+  });
+
+  it('shows the API error and keeps the picker open when linking fails', async () => {
+    const { fixture, http } = await setup();
+
+    addButton(fixture, 'acme-corp/docs')!.click();
+    fixture.detectChanges();
+
+    (row(fixture, 'acme-corp/docs')!.querySelector('button[data-pick]') as HTMLButtonElement).click();
+
+    http
+      .expectOne(r => r.method === 'POST')
+      .flush(apiError("'GitHubRepository' was not found."), {
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain("'GitHubRepository' was not found.");
+    expect(chipKeys(fixture, 'acme-corp/docs')).toEqual([]);
   });
 });

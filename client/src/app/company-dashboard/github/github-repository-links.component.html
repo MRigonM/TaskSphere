@@ -82,7 +82,28 @@
               class="text-white/50 hover:text-white transition disabled:opacity-50"
             >×</button>
           </span>
+
+          <button
+            type="button"
+            data-add
+            (click)="togglePicker(repository.id)"
+            [disabled]="busyRepoId() === repository.id || !available(repository).length"
+            [attr.aria-label]="'Link a project to ' + repository.fullName"
+            class="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-semibold text-white hover:bg-white/10 transition disabled:opacity-40"
+          >+</button>
         </div>
+
+        <ul *ngIf="pickerRepoId() === repository.id" class="mt-2 flex flex-wrap gap-2">
+          <li *ngFor="let project of available(repository)">
+            <button
+              type="button"
+              data-pick
+              (click)="link(repository.id, project.id)"
+              [disabled]="busyRepoId() === repository.id"
+              class="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-100 hover:bg-indigo-500/20 transition disabled:opacity-50"
+            >{{ project.key }} · {{ project.name }}</button>
+          </li>
+        </ul>
       </li>
     </ul>
   </ng-container>

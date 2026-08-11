@@ -83,6 +83,29 @@ export class GitHubRepositoryLinksComponent implements OnInit {
       .subscribe();
   }
 
+  togglePicker(repositoryId: number) {
+    this.pickerRepoId.update(open => (open === repositoryId ? null : repositoryId));
+  }
+
+  link(repositoryId: number, projectId: number) {
+    this.busyRepoId.set(repositoryId);
+    this.error.set(null);
+    this.links
+      .link(projectId, repositoryId)
+      .pipe(
+        tap(() => {
+          this.pickerRepoId.set(null);
+          this.load();
+        }),
+        catchError(err => {
+          this.error.set(apiErrorMessage(err, 'Failed to link the repository.'));
+          return of(null);
+        }),
+        finalize(() => this.busyRepoId.set(null))
+      )
+      .subscribe();
+  }
+
   /**
    * Both reads write the one `error` signal, so it is cleared here rather than inside either of
    * them: clearing it in `load()` would silently wipe a project-read failure that had already

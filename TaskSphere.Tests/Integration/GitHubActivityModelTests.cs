@@ -179,11 +179,19 @@ public class GitHubActivityModelTests : IAsyncLifetime
     [Fact]
     public async SystemTask.Task DuplicatePullRequestNumber_InTheSameRepository_IsRejected()
     {
+        // Soft-deleted first, matching the commit and branch tests above: a closed-then-reopened
+        // PR reuses its number, so a filtered index would wrongly admit the duplicate here.
         await using (var db = NewContext())
         {
-            db.GitHubPullRequests.Add(NewPullRequest(17));
+            var pull = NewPullRequest(17);
+            pull.IsDeleted = true;
+            pull.DeletedAt = DateTime.UtcNow;
+            db.GitHubPullRequests.Add(pull);
             await db.SaveChangesAsync();
+        }
 
+        await using (var db = NewContext())
+        {
             db.GitHubPullRequests.Add(NewPullRequest(17));
 
             var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
@@ -228,7 +236,20 @@ public class GitHubActivityModelTests : IAsyncLifetime
 
             db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = commitId });
             await db.SaveChangesAsync();
+        }
 
+        await using (var db = NewContext())
+        {
+            // A second *live* link to the same commit must be rejected: the resolver in
+            // Tasks 4-5 writes on every sync, so a re-run must not create a second live row.
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = commitId });
+
+            var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            Assert.Contains("IX_TaskLinks_TaskId_CommitId", ex.GetBaseException().Message, StringComparison.Ordinal);
+        }
+
+        await using (var db = NewContext())
+        {
             var link = await db.TaskLinks.SingleAsync();
             link.IsDeleted = true;
             link.DeletedAt = DateTime.UtcNow;
@@ -238,6 +259,106 @@ public class GitHubActivityModelTests : IAsyncLifetime
         await using (var db = NewContext())
         {
             db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = commitId });
+            await db.SaveChangesAsync();
+
+            Assert.Single(await db.TaskLinks.ToListAsync());
+            Assert.Equal(2, await db.TaskLinks.IgnoreQueryFilters().CountAsync());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task UnlinkedThenRelinkedBranchTaskLink_IsAllowed_ButADuplicateLiveLinkIsRejected()
+    {
+        // Mirrors UnlinkedThenRelinkedTaskLink_… for the GitHubBranchId FK, so
+        // IX_TaskLinks_TaskId_BranchId's own IsDeleted clause is pinned, not just the commit one.
+        int branchId;
+
+        await using (var db = NewContext())
+        {
+            var branch = NewBranch("TS-42-fix");
+            db.GitHubBranches.Add(branch);
+            await db.SaveChangesAsync();
+            branchId = branch.Id;
+
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branchId });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branchId });
+
+            var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            Assert.Contains("IX_TaskLinks_TaskId_BranchId", ex.GetBaseException().Message, StringComparison.Ordinal);
+        }
+
+        await using (var db = NewContext())
+        {
+            var link = await db.TaskLinks.SingleAsync();
+            link.IsDeleted = true;
+            link.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branchId });
+            await db.SaveChangesAsync();
+
+            Assert.Single(await db.TaskLinks.ToListAsync());
+            Assert.Equal(2, await db.TaskLinks.IgnoreQueryFilters().CountAsync());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task UnlinkedThenRelinkedPullRequestTaskLink_IsAllowed_ButADuplicateLiveLinkIsRejected()
+    {
+        // Mirrors UnlinkedThenRelinkedTaskLink_… for the GitHubPullRequestId FK, so
+        // IX_TaskLinks_TaskId_PullRequestId's own IsDeleted clause is pinned too.
+        int pullRequestId;
+
+        await using (var db = NewContext())
+        {
+            var pull = new GitHubPullRequest
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Number = 19,
+                Title = "TS-42 wire the panel",
+                State = PullRequestState.Open,
+                AuthorLogin = "MRigonM",
+                HeadBranch = "TS-42-fix",
+                OpenedAtUtc = DateTime.UtcNow,
+                GitHubUpdatedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/rigon-org/api/pull/19",
+            };
+            db.GitHubPullRequests.Add(pull);
+            await db.SaveChangesAsync();
+            pullRequestId = pull.Id;
+
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubPullRequestId = pullRequestId });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubPullRequestId = pullRequestId });
+
+            var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            Assert.Contains("IX_TaskLinks_TaskId_PullRequestId", ex.GetBaseException().Message, StringComparison.Ordinal);
+        }
+
+        await using (var db = NewContext())
+        {
+            var link = await db.TaskLinks.SingleAsync();
+            link.IsDeleted = true;
+            link.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubPullRequestId = pullRequestId });
             await db.SaveChangesAsync();
 
             Assert.Single(await db.TaskLinks.ToListAsync());
@@ -282,6 +403,39 @@ public class GitHubActivityModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async SystemTask.Task SoftDeletedCommit_IsHiddenByQueryFilter_AndVisibleWhenIgnored()
+    {
+        // Same reasoning as the branch and pull request variants below: the read surfaces
+        // deleted records with a marker rather than dropping them, so it must suppress this
+        // filter deliberately, for all three record kinds, not just branches.
+        await using (var db = NewContext())
+        {
+            db.GitHubCommits.Add(new GitHubCommit
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Sha = "2222222222222222222222222222222222222b",
+                Message = "TS-42 filter check",
+                AuthorName = "Rigon",
+                CommittedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/rigon-org/api/commit/2222222",
+            });
+            await db.SaveChangesAsync();
+
+            var commit = await db.GitHubCommits.SingleAsync();
+            commit.IsDeleted = true;
+            commit.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            Assert.Empty(await db.GitHubCommits.ToListAsync());
+            Assert.Single(await db.GitHubCommits.IgnoreQueryFilters().ToListAsync());
+        }
+    }
+
+    [Fact]
     public async SystemTask.Task SoftDeletedBranch_IsHiddenByQueryFilter_AndVisibleWhenIgnored()
     {
         // The read surfaces deleted branches with a marker rather than dropping them, so it
@@ -301,6 +455,40 @@ public class GitHubActivityModelTests : IAsyncLifetime
         {
             Assert.Empty(await db.GitHubBranches.ToListAsync());
             Assert.Single(await db.GitHubBranches.IgnoreQueryFilters().ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task SoftDeletedPullRequest_IsHiddenByQueryFilter_AndVisibleWhenIgnored()
+    {
+        // Same reasoning as SoftDeletedBranch_… above, for the pull request query filter.
+        await using (var db = NewContext())
+        {
+            db.GitHubPullRequests.Add(new GitHubPullRequest
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Number = 21,
+                Title = "TS-42 filter check",
+                State = PullRequestState.Open,
+                AuthorLogin = "MRigonM",
+                HeadBranch = "TS-42-fix",
+                OpenedAtUtc = DateTime.UtcNow,
+                GitHubUpdatedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/rigon-org/api/pull/21",
+            });
+            await db.SaveChangesAsync();
+
+            var pull = await db.GitHubPullRequests.SingleAsync();
+            pull.IsDeleted = true;
+            pull.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            Assert.Empty(await db.GitHubPullRequests.ToListAsync());
+            Assert.Single(await db.GitHubPullRequests.IgnoreQueryFilters().ToListAsync());
         }
     }
 }

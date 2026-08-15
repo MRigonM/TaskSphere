@@ -3,8 +3,12 @@ using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.Interfaces;
 
-// The entities, not the namespace: importing TaskSphere.Domain.Entities wholesale pulls in an
-// entity called Task and makes every bare Task in this file ambiguous.
+// The entity, not the namespace — preventively, and by the convention every other GitHub
+// service here follows. A wholesale `using TaskSphere.Domain.Entities;` compiles clean today:
+// the only Task in this file is the generic Task<TaskLinkResolution>, and arity-1 never
+// collides with the non-generic entity. It stops compiling the moment anyone writes a bare
+// Task — Task.WhenAll, Task.CompletedTask — which is then CS0104, "'Task' is an ambiguous
+// reference between 'TaskSphere.Domain.Entities.Task' and 'System.Threading.Tasks.Task'".
 using TaskLink = TaskSphere.Domain.Entities.TaskLink;
 
 namespace TaskSphere.Infrastructure.Services;

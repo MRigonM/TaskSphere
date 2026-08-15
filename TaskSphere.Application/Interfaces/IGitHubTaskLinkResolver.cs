@@ -1,9 +1,10 @@
 namespace TaskSphere.Application.Interfaces;
 
 /// <summary>
-/// Counts for the sync summary. <c>KeysSeen</c> counts distinct key mentions across all
-/// scanned records; <c>KeysUnresolved</c> is how many of those routed nowhere — an
-/// unresolvable key is normal traffic, not an error, so it is reported and never thrown.
+/// Counts for the sync summary. <c>KeysSeen</c> counts key mentions, deduplicated within each
+/// record — three commits each naming TS-42 count three, one commit naming it twice counts one;
+/// <c>KeysUnresolved</c> is how many of those routed nowhere — an unresolvable key is normal
+/// traffic, not an error, so it is reported and never thrown.
 /// </summary>
 public sealed record TaskLinkResolution(int LinksCreated, int KeysSeen, int KeysUnresolved);
 

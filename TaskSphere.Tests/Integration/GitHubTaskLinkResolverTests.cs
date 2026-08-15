@@ -31,6 +31,7 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
     private int _tsProjectId;      // key "TS", linked to _apiRepositoryId
     private int _bsProjectId;      // key "BS", linked to nothing
+    private int _tsxProjectId;     // key "TSX", linked to nothing — "TS" is a prefix of it
     private int _apiRepositoryId;
     private int _webRepositoryId;  // linked to no project at all
 
@@ -64,13 +65,17 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
         var ts = new Project { Name = "TaskSphere", Key = "TS", CompanyId = _companyId };
         var bs = new Project { Name = "BaseClean", Key = "BS", CompanyId = _companyId };
+        // "TS" is a prefix of "TSX", and both are ordinary keys. Key matching must be exact,
+        // not prefix-wise, or TSX-42 routes into TS.
+        var tsx = new Project { Name = "TaskSphere X", Key = "TSX", CompanyId = _companyId };
         // Same key, different company: the cross-tenant case.
         var foreign = new Project { Name = "Foreign TS", Key = "TS", CompanyId = _otherCompanyId };
-        db.Projects.AddRange(ts, bs, foreign);
+        db.Projects.AddRange(ts, bs, tsx, foreign);
         await db.SaveChangesAsync();
 
         _tsProjectId = ts.Id;
         _bsProjectId = bs.Id;
+        _tsxProjectId = tsx.Id;
 
         var installation = new GitHubInstallation
         {
@@ -249,11 +254,10 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         // BS exists and BS-7 exists; what is missing is a link from api to BS.
         await SeedCommit("BS-7 from the api repo", _apiRepositoryId);
 
-        await Resolve();
+        Assert.Equal(0, (await Resolve()).LinksCreated);
 
         await using var db = NewContext();
         Assert.Empty(await db.TaskLinks.ToListAsync());
-        Assert.DoesNotContain(_bs7TaskId, await db.TaskLinks.Select(l => l.TaskId).ToListAsync());
     }
 
     [Fact]
@@ -331,6 +335,107 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
             var link = await db.TaskLinks.SingleAsync();
             Assert.Equal(_bs7TaskId, link.TaskId);
         }
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedTask_IsNeverLinked()
+    {
+        // Reachable through the ordinary task API. It matters permanently, not just until the
+        // next sync: the unique index on Task(ProjectId, Number) is filtered on
+        // [ProjectId] IS NOT NULL only — not on IsDeleted — so a deleted TS-51 reserves
+        // number 51 forever, and every later commit naming TS-51 must resolve to nothing.
+        await using (var db = NewContext())
+        {
+            var task = await db.Set<TaskEntity>().SingleAsync(t => t.Id == _ts51TaskId);
+            task.IsDeleted = true;
+            task.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await SeedCommit("TS-51 resurrect the dead", _apiRepositoryId);
+
+        Assert.Equal(0, (await Resolve()).LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task AKeyWhoseProjectKeyMerelyStartsWithAnother_DoesNotRouteIntoIt()
+    {
+        // TSX is its own project and is linked to nothing. Matching project keys by prefix
+        // rather than exactly would route TSX-42 into TS, which is linked to api — a
+        // cross-project breach dressed up as a lookup.
+        await SeedCommit("TSX-42 unrelated", _apiRepositoryId);
+
+        Assert.Equal(0, (await Resolve()).LinksCreated);
+
+        await using (var db = NewContext())
+        {
+            var links = await db.TaskLinks.ToListAsync();
+            Assert.Empty(links);
+            Assert.DoesNotContain(_ts42TaskId, links.Select(l => l.TaskId));
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task TwoCommitsNamingTheSameKey_EachGetTheirOwnLink()
+    {
+        // Suppression is per (task, commit), not per task. Keyed on the task alone, a task
+        // named by five commits would hold one link and its panel would show one commit —
+        // silent data loss that a single-commit re-run test cannot see.
+        var first = await SeedCommit("TS-42 first half", _apiRepositoryId);
+        var second = await SeedCommit("TS-42 second half", _apiRepositoryId);
+
+        var result = await Resolve();
+
+        Assert.Equal(2, result.LinksCreated);
+        Assert.Equal(2, result.KeysSeen);
+
+        // And the pair survives a re-run: still two rows, still no duplicate.
+        Assert.Equal(0, (await Resolve()).LinksCreated);
+
+        await using (var db = NewContext())
+        {
+            var links = await db.TaskLinks.ToListAsync();
+
+            Assert.Equal(2, links.Count);
+            Assert.All(links, l => Assert.Equal(_ts42TaskId, l.TaskId));
+            Assert.Equal(
+                new[] { first, second }.OrderBy(id => id).ToList(),
+                links.Select(l => l.GitHubCommitId!.Value).OrderBy(id => id).ToList());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task ALinkRowBelongingToAnotherCompany_DoesNotAuthorize()
+    {
+        // Defence in depth. No writer produces this row today — GitHubProjectLinkService
+        // validates both ends — but the authorized set is only as tenant-safe as its own
+        // predicate, and B2's webhook-driven auto-link is exactly the kind of future writer
+        // that might not validate.
+        //
+        // BS rather than TS: the unique index on (ProjectId, GitHubRepositoryId) is filtered
+        // on [IsDeleted] = 0 and does not include CompanyId, so a second live row over
+        // (TS, api) would be rejected by the index before the resolver ever saw it.
+        await using (var db = NewContext())
+        {
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = _bsProjectId,
+                GitHubRepositoryId = _apiRepositoryId,
+                CompanyId = _otherCompanyId,
+                LinkedByUserId = "intruder",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await SeedCommit("BS-7 authorized by someone else's link", _apiRepositoryId);
+
+        Assert.Equal(0, (await Resolve()).LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.TaskLinks.ToListAsync());
     }
 
     [Fact]

@@ -40,6 +40,10 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<GitHubInstallation> GitHubInstallations { get; set; }
     public DbSet<GitHubRepository> GitHubRepositories { get; set; }
     public DbSet<ProjectRepositoryLink> ProjectRepositoryLinks { get; set; }
+    public DbSet<GitHubCommit> GitHubCommits { get; set; }
+    public DbSet<GitHubBranch> GitHubBranches { get; set; }
+    public DbSet<GitHubPullRequest> GitHubPullRequests { get; set; }
+    public DbSet<TaskLink> TaskLinks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -289,6 +293,142 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
             entity.HasOne(l => l.Repository)
                 .WithMany()
                 .HasForeignKey(l => l.GitHubRepositoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GitHubCommit>(entity =>
+        {
+            entity.HasQueryFilter(c => !c.IsDeleted);
+
+            entity.Property(c => c.Sha)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            entity.Property(c => c.Message)
+                .IsRequired()
+                .HasMaxLength(4000);
+
+            entity.Property(c => c.AuthorName)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(c => c.AuthorLogin)
+                .HasMaxLength(255);
+
+            entity.Property(c => c.HtmlUrl)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            // Unfiltered, per B1's rule for GitHub-issued identities: upserts revive the
+            // soft-deleted row rather than inserting a second one beside it.
+            entity.HasIndex(c => new { c.GitHubRepositoryId, c.Sha })
+                .IsUnique()
+                .HasDatabaseName("IX_GitHubCommits_RepositoryId_Sha");
+
+            entity.HasOne(c => c.Repository)
+                .WithMany()
+                .HasForeignKey(c => c.GitHubRepositoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GitHubBranch>(entity =>
+        {
+            entity.HasQueryFilter(b => !b.IsDeleted);
+
+            entity.Property(b => b.Name)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(b => b.HeadSha)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            // Unfiltered, and this is where it earns its keep: merge TS-42-fix, GitHub deletes
+            // the branch, recreate it a week later. A filtered index would admit a second live
+            // row alongside the soft-deleted one.
+            entity.HasIndex(b => new { b.GitHubRepositoryId, b.Name })
+                .IsUnique()
+                .HasDatabaseName("IX_GitHubBranches_RepositoryId_Name");
+
+            entity.HasOne(b => b.Repository)
+                .WithMany()
+                .HasForeignKey(b => b.GitHubRepositoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GitHubPullRequest>(entity =>
+        {
+            entity.HasQueryFilter(p => !p.IsDeleted);
+
+            entity.Property(p => p.Title)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(p => p.Body)
+                .HasMaxLength(8000);
+
+            entity.Property(p => p.AuthorLogin)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(p => p.HeadBranch)
+                .IsRequired()
+                .HasMaxLength(255);
+
+            entity.Property(p => p.HtmlUrl)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.HasIndex(p => new { p.GitHubRepositoryId, p.Number })
+                .IsUnique()
+                .HasDatabaseName("IX_GitHubPullRequests_RepositoryId_Number");
+
+            entity.HasOne(p => p.Repository)
+                .WithMany()
+                .HasForeignKey(p => p.GitHubRepositoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TaskLink>(entity =>
+        {
+            entity.HasQueryFilter(l => !l.IsDeleted);
+
+            // Filtered on IsDeleted as well as the FK, matching ProjectRepositoryLink: a
+            // TaskLink is a TaskSphere-owned row, not a GitHub identity, so a soft-deleted one
+            // must never block a new link between the same pair.
+            entity.HasIndex(l => new { l.TaskId, l.GitHubCommitId })
+                .IsUnique()
+                .HasFilter("[GitHubCommitId] IS NOT NULL AND [IsDeleted] = 0")
+                .HasDatabaseName("IX_TaskLinks_TaskId_CommitId");
+
+            entity.HasIndex(l => new { l.TaskId, l.GitHubBranchId })
+                .IsUnique()
+                .HasFilter("[GitHubBranchId] IS NOT NULL AND [IsDeleted] = 0")
+                .HasDatabaseName("IX_TaskLinks_TaskId_BranchId");
+
+            entity.HasIndex(l => new { l.TaskId, l.GitHubPullRequestId })
+                .IsUnique()
+                .HasFilter("[GitHubPullRequestId] IS NOT NULL AND [IsDeleted] = 0")
+                .HasDatabaseName("IX_TaskLinks_TaskId_PullRequestId");
+
+            entity.HasOne(l => l.Task)
+                .WithMany()
+                .HasForeignKey(l => l.TaskId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<GitHubCommit>()
+                .WithMany()
+                .HasForeignKey(l => l.GitHubCommitId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<GitHubBranch>()
+                .WithMany()
+                .HasForeignKey(l => l.GitHubBranchId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<GitHubPullRequest>()
+                .WithMany()
+                .HasForeignKey(l => l.GitHubPullRequestId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

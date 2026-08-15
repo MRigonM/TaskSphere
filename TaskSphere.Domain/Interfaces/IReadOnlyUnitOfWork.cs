@@ -11,4 +11,8 @@ public interface IReadOnlyUnitOfWork
     IGitHubInstallationRepository GitHubInstallations { get; }
     IGitHubRepositoryRepository GitHubRepositories { get; }
     IProjectRepositoryLinkRepository ProjectRepositoryLinks { get; }
+    IGitHubCommitRepository GitHubCommits { get; }
+    IGitHubBranchRepository GitHubBranches { get; }
+    IGitHubPullRequestRepository GitHubPullRequests { get; }
+    ITaskLinkRepository TaskLinks { get; }
 }

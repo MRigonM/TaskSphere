@@ -44,6 +44,22 @@ public class UnitOfWork : IUnitOfWork
     public IProjectRepositoryLinkRepository ProjectRepositoryLinks =>
         _projectRepositoryLinks ??= new ProjectRepositoryLinkRepository(_context);
 
+    private IGitHubCommitRepository? _gitHubCommits;
+    public IGitHubCommitRepository GitHubCommits =>
+        _gitHubCommits ??= new GitHubCommitRepository(_context);
+
+    private IGitHubBranchRepository? _gitHubBranches;
+    public IGitHubBranchRepository GitHubBranches =>
+        _gitHubBranches ??= new GitHubBranchRepository(_context);
+
+    private IGitHubPullRequestRepository? _gitHubPullRequests;
+    public IGitHubPullRequestRepository GitHubPullRequests =>
+        _gitHubPullRequests ??= new GitHubPullRequestRepository(_context);
+
+    private ITaskLinkRepository? _taskLinks;
+    public ITaskLinkRepository TaskLinks =>
+        _taskLinks ??= new TaskLinkRepository(_context);
+
     private IGenericRepository<ChatMessage, int>? _chatMessages;
     public IGenericRepository<ChatMessage, int> ChatMessages =>
         _chatMessages ??= new GenericRepository<ChatMessage, int>(_context);

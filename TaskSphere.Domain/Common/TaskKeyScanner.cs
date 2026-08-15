@@ -14,9 +14,13 @@ namespace TaskSphere.Domain.Common;
 /// </summary>
 public static partial class TaskKeyScanner
 {
-    // Boundaries, not \b: \b would happily match the "TS-42" inside "XTS-42", because the
-    // boundary it finds sits between X and T only when one of them is a non-word character.
-    // The trailing (?![0-9]) stops TS-421 being read as TS-42.
+    // Lookbehind, not \b: on letters and digits the two agree (\b also reads "XTS-42" as one
+    // key for project XTS). They diverge on characters \b counts as word characters but this
+    // class does not — "_" and non-ASCII letters. "fix_TS-42" is a legal branch name, so the
+    // lookbehind deliberately admits it where \b would not.
+    // The trailing (?![0-9]) is not about TS-421 — greedy matching already takes 421 whole.
+    // It makes a ten-digit run no key at all rather than a nine-digit key with its tail
+    // chopped off: "TS-1234567890" scans as nothing, not as TS-123456789.
     [GeneratedRegex(@"(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,8}(?![0-9])")]
     private static partial Regex CandidatePattern();
 

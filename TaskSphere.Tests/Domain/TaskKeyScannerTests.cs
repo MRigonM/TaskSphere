@@ -51,7 +51,19 @@ public class TaskKeyScannerTests
         // show this — the number match is greedy and takes 421 with or without the lookahead.
         Assert.Empty(Keys("TS-1234567890"));
         Assert.Equal(["TS-421"], Keys("TS-421"));
+
+        // The lookbehind's real divergence from \b: "_" is a word character to \b but not a
+        // glue character here, and "fix_TS-42" is a legal branch name.
+        Assert.Equal(["TS-42"], Keys("fix_TS-42"));
     }
+
+    [Theory]
+    [InlineData("TS-1")]
+    [InlineData("PROJ2-999")]
+    [InlineData("ABCDEFGHIJ-7")]
+    [InlineData("TS-999999999")]
+    public void Scan_FindsEveryKeyShapeTaskKeyItselfAccepts(string key)
+        => Assert.Equal([key], Keys($"fixes {key} now"));
 
     [Fact]
     public void Scan_ReadsAnUppercasePrefixAsPartOfTheProjectKey()

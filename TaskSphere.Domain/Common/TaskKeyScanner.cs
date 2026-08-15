@@ -14,10 +14,10 @@ namespace TaskSphere.Domain.Common;
 /// </summary>
 public static partial class TaskKeyScanner
 {
-    // Lookbehind, not \b: on letters and digits the two agree (\b also reads "XTS-42" as one
-    // key for project XTS). They diverge on characters \b counts as word characters but this
-    // class does not — "_" and non-ASCII letters. "fix_TS-42" is a legal branch name, so the
-    // lookbehind deliberately admits it where \b would not.
+    // Lookbehind, not \b: on ASCII letters and digits the two agree (\b also reads "XTS-42" as
+    // one key for project XTS). They diverge on everything else \b counts as a word character —
+    // "_", non-ASCII letters and digits, combining marks. "fix_TS-42" is a legal branch name,
+    // so the lookbehind deliberately admits it where \b would not.
     // The trailing (?![0-9]) is not about TS-421 — greedy matching already takes 421 whole.
     // It makes a ten-digit run no key at all rather than a nine-digit key with its tail
     // chopped off: "TS-1234567890" scans as nothing, not as TS-123456789.

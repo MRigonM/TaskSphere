@@ -16,6 +16,11 @@ public interface IGitHubBranchRepository : IGenericRepository<GitHubBranch, int>
     /// <summary>
     /// Every branch of the company, deleted ones included. The read renders a deleted branch
     /// with a marker rather than dropping it, so it cannot use the filtered query.
+    ///
+    /// Unlike the other IncludingDeleted lookups, this one returns a composable IQueryable
+    /// instead of terminating with FirstOrDefaultAsync: filter suppression is query-wide, so
+    /// chaining .Include(b => b.Repository) on the result would also materialize soft-deleted
+    /// repositories.
     /// </summary>
     IQueryable<GitHubBranch> GetByCompanyIncludingDeleted(Guid companyId);
 }

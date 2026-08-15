@@ -7,8 +7,11 @@ using Company = TaskSphere.Domain.Entities.Company;
 using GitHubBranch = TaskSphere.Domain.Entities.GitHubBranch;
 using GitHubCommit = TaskSphere.Domain.Entities.GitHubCommit;
 using GitHubInstallation = TaskSphere.Domain.Entities.GitHubInstallation;
+using GitHubPullRequest = TaskSphere.Domain.Entities.GitHubPullRequest;
 using GitHubRepository = TaskSphere.Domain.Entities.GitHubRepository;
 using SystemTask = System.Threading.Tasks;
+using TaskEntity = TaskSphere.Domain.Entities.Task;
+using TaskLink = TaskSphere.Domain.Entities.TaskLink;
 
 namespace TaskSphere.Tests.Integration;
 
@@ -134,6 +137,46 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
             Assert.NotNull(found);
             Assert.True(found!.IsDeleted);
+
+            // GetByCompanyIncludingDeleted is the panel's read of every branch, deleted ones
+            // included — it needs the same filter suppression, scoped to the same company.
+            var companyBranches = await repo.GetByCompanyIncludingDeleted(_companyId).ToListAsync();
+            Assert.Contains(companyBranches, b => b.Name == "TS-42-fix" && b.IsDeleted);
+            Assert.Empty(await repo.GetByCompanyIncludingDeleted(Guid.NewGuid()).ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task GetByNumber_FindsASoftDeletedPullRequest()
+    {
+        await using (var db = NewContext())
+        {
+            db.GitHubPullRequests.Add(new GitHubPullRequest
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Number = 42,
+                Title = "TS-42 fix",
+                State = PullRequestState.Closed,
+                AuthorLogin = "rigon",
+                HeadBranch = "TS-42-fix",
+                OpenedAtUtc = DateTime.UtcNow,
+                GitHubUpdatedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/rigon-org/api/pull/42",
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            var repo = new GitHubPullRequestRepository(db);
+
+            var found = await repo.GetByNumberIncludingDeletedAsync(_repositoryId, 42, default);
+
+            Assert.NotNull(found);
+            Assert.True(found!.IsDeleted);
         }
     }
 
@@ -180,6 +223,89 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
             Assert.Single(mine);
             Assert.Equal("mine", mine[0].Message);
             Assert.Empty(await repo.GetByCompany(Guid.NewGuid()).ToListAsync());
+
+            // The method this test is named for: GetByRepository must apply the same
+            // companyId scoping GetByCompany does.
+            var mineInRepo = await repo.GetByRepository(_companyId, _repositoryId).ToListAsync();
+            Assert.Single(mineInRepo);
+            Assert.Equal("mine", mineInRepo[0].Message);
+            Assert.Empty(await repo.GetByRepository(Guid.NewGuid(), _repositoryId).ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task GetByCompany_And_GetByRepository_ExcludeSoftDeletedRows()
+    {
+        int taskId;
+        await using (var db = NewContext())
+        {
+            var task = new TaskEntity { Title = "Host task", CompanyId = _companyId };
+            db.Tasks.Add(task);
+            await db.SaveChangesAsync();
+            taskId = task.Id;
+
+            db.GitHubCommits.Add(new GitHubCommit
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Sha = "3333333333333333333333333333333333333333",
+                Message = "gone",
+                AuthorName = "Rigon",
+                CommittedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/x/3",
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+            });
+            db.GitHubBranches.Add(new GitHubBranch
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Name = "gone-branch",
+                HeadSha = "ccc",
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+            });
+            db.GitHubPullRequests.Add(new GitHubPullRequest
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Number = 99,
+                Title = "gone pr",
+                State = PullRequestState.Closed,
+                AuthorLogin = "rigon",
+                HeadBranch = "gone-branch",
+                OpenedAtUtc = DateTime.UtcNow,
+                GitHubUpdatedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/x/pull/99",
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+            });
+            db.TaskLinks.Add(new TaskLink
+            {
+                CompanyId = _companyId,
+                TaskId = taskId,
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        // A stray IgnoreQueryFilters() on any of these would leak the soft-deleted row back
+        // in — the exact opposite failure from the IncludingDeleted lookups above.
+        await using (var db = NewContext())
+        {
+            Assert.Empty(await new GitHubCommitRepository(db).GetByCompany(_companyId).ToListAsync());
+            Assert.Empty(await new GitHubCommitRepository(db).GetByRepository(_companyId, _repositoryId).ToListAsync());
+
+            Assert.Empty(await new GitHubBranchRepository(db).GetByCompany(_companyId).ToListAsync());
+            Assert.Empty(await new GitHubBranchRepository(db).GetByRepository(_companyId, _repositoryId).ToListAsync());
+
+            Assert.Empty(await new GitHubPullRequestRepository(db).GetByCompany(_companyId).ToListAsync());
+            Assert.Empty(await new GitHubPullRequestRepository(db).GetByRepository(_companyId, _repositoryId).ToListAsync());
+
+            Assert.Empty(await new TaskLinkRepository(db).GetByCompany(_companyId).ToListAsync());
+            Assert.Empty(await new TaskLinkRepository(db).GetByTask(_companyId, taskId).ToListAsync());
         }
     }
 
@@ -196,5 +322,8 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
         // Lazy, and cached: the same instance on a second read, like every other property.
         Assert.Same(uow.GitHubCommits, uow.GitHubCommits);
+        Assert.Same(uow.GitHubBranches, uow.GitHubBranches);
+        Assert.Same(uow.GitHubPullRequests, uow.GitHubPullRequests);
+        Assert.Same(uow.TaskLinks, uow.TaskLinks);
     }
 }

@@ -18,6 +18,8 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
     /// One number, one meaning — deliberately not configurable. A fixed window is always safe
     /// to re-run, which a per-repository watermark is not: force-push and rebase make "what
     /// changed since last time" genuinely hard to answer correctly.
+    /// Nothing reads it yet: branches are fetched whole, so the window only starts applying
+    /// when the commits pass lands.
     /// </summary>
     private const int SyncWindowDays = 30;
 
@@ -58,7 +60,6 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             .OrderBy(r => r.FullName)
             .ToListAsync(cancellationToken);
 
-        var since = DateTime.UtcNow.AddDays(-SyncWindowDays);
         var failures = new List<SyncFailureDto>();
 
         var synced = 0;
@@ -89,8 +90,16 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
+        // Named, because six positional members of which four are ints is a transposition
+        // waiting to happen — and it says out loud that the two zeroes are unimplemented
+        // passes rather than counts that came back empty.
         return Result<SyncActivityResultDto>.Success(new SyncActivityResultDto(
-            synced, 0, branchCount, 0, resolution.LinksCreated, failures));
+            RepositoriesSynced: synced,
+            Commits: 0,
+            Branches: branchCount,
+            PullRequests: 0,
+            LinksCreated: resolution.LinksCreated,
+            Failures: failures));
     }
 
     private async Task<Result<int>> SyncBranchesAsync(
@@ -120,14 +129,21 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         if (payload is null)
             return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no branches list for {fullName}."));
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // The store decides what "the same branch" means, and it is case-insensitive:
+        // GitHubBranches.Name sits under SQL_Latin1_General_CP1_CI_AS and
+        // IX_GitHubBranches_RepositoryId_Name is unique, so two casings of one name are one
+        // row. Comparing ordinally here soft-deleted a branch on the very pass that updated it
+        // (payload "Feature-X" against stored "feature-x"), and two casings inside one payload
+        // hit the index and threw. First casing seen wins; the second cannot get its own row.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var branch in payload)
         {
             if (string.IsNullOrEmpty(branch.Name))
                 continue;
 
-            seen.Add(branch.Name);
+            if (!seen.Add(branch.Name))
+                continue;
 
             // IgnoreQueryFilters, because IX_GitHubBranches_RepositoryId_Name is unfiltered.
             // A merged-then-recreated branch has a soft-deleted row that a filtered lookup
@@ -156,7 +172,10 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             await _unitOfWork.GitHubBranches.Update(existing, cancellationToken);
         }
 
-        // Saved before the absent-branch pass so the upserts above are visible to it.
+        // Flushed per repository rather than once at the end, so the change tracker holds one
+        // repository's branches at a time. The absent pass below does not depend on it: every
+        // row the loop touched is in `seen` by construction, and the pass only acts on the
+        // live rows that are not.
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var live = await _unitOfWork.GitHubBranches

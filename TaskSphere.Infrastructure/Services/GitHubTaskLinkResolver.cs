@@ -59,17 +59,48 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
             .Select(c => new { c.Id, c.GitHubRepositoryId, c.Message })
             .ToListAsync(cancellationToken);
 
+        var branches = await _unitOfWork.GitHubBranches
+            .GetByCompany(companyId)
+            .Select(b => new { b.Id, b.GitHubRepositoryId, b.Name })
+            .ToListAsync(cancellationToken);
+
+        var pulls = await _unitOfWork.GitHubPullRequests
+            .GetByCompany(companyId)
+            .Select(p => new { p.Id, p.GitHubRepositoryId, p.Title, p.Body })
+            .ToListAsync(cancellationToken);
+
         var created = 0;
         var seen = 0;
         var unresolved = 0;
 
         foreach (var commit in commits)
+            await LinkAll(commit.Message, commit.GitHubRepositoryId, commitId: commit.Id);
+
+        foreach (var branch in branches)
+            await LinkAll(branch.Name, branch.GitHubRepositoryId, branchId: branch.Id);
+
+        foreach (var pull in pulls)
         {
-            foreach (var key in TaskKeyScanner.Scan(commit.Message))
+            // Title and body scanned as one text, so a pull request that names a task in both
+            // places is one mention rather than two: TaskKeyScanner.Scan already returns each
+            // distinct key once per text. The per-kind suppression below would collapse the
+            // second link either way; what this keeps honest is the KeysSeen count.
+            var text = string.IsNullOrEmpty(pull.Body) ? pull.Title : pull.Title + "\n" + pull.Body;
+            await LinkAll(text, pull.GitHubRepositoryId, pullRequestId: pull.Id);
+        }
+
+        if (created > 0)
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new TaskLinkResolution(created, seen, unresolved);
+
+        async Task LinkAll(string text, int gitHubRepositoryId, int? commitId = null, int? branchId = null, int? pullRequestId = null)
+        {
+            foreach (var key in TaskKeyScanner.Scan(text))
             {
                 seen++;
 
-                var taskId = ResolveTask(key, commit.GitHubRepositoryId);
+                var taskId = ResolveTask(key, gitHubRepositoryId);
 
                 if (taskId is null)
                 {
@@ -77,26 +108,21 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
                     continue;
                 }
 
-                var identity = (taskId.Value, (int?)commit.Id, (int?)null, (int?)null);
-
-                if (!existing.Add(identity))
+                if (!existing.Add((taskId.Value, commitId, branchId, pullRequestId)))
                     continue;
 
                 await _unitOfWork.TaskLinks.AddAsync(new TaskLink
                 {
                     CompanyId = companyId,
                     TaskId = taskId.Value,
-                    GitHubCommitId = commit.Id,
+                    GitHubCommitId = commitId,
+                    GitHubBranchId = branchId,
+                    GitHubPullRequestId = pullRequestId,
                 }, cancellationToken);
 
                 created++;
             }
         }
-
-        if (created > 0)
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return new TaskLinkResolution(created, seen, unresolved);
 
         // Steps 1-3 of the spec's resolution order, in order. Step 2 is the authorization
         // boundary: without it, push access to any repository under the installation would be

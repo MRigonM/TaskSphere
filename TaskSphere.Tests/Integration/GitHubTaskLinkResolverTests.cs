@@ -157,6 +157,49 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         return commit.Id;
     }
 
+    private async SystemTask.Task<int> SeedBranch(string name, int repositoryId)
+    {
+        await using var db = NewContext();
+
+        var branch = new TaskSphere.Domain.Entities.GitHubBranch
+        {
+            GitHubRepositoryId = repositoryId,
+            CompanyId = _companyId,
+            Name = name,
+            HeadSha = "aaaaaaa",
+        };
+
+        db.GitHubBranches.Add(branch);
+        await db.SaveChangesAsync();
+
+        return branch.Id;
+    }
+
+    private async SystemTask.Task<int> SeedPullRequest(int number, string title, string? body, int repositoryId)
+    {
+        await using var db = NewContext();
+
+        var pull = new TaskSphere.Domain.Entities.GitHubPullRequest
+        {
+            GitHubRepositoryId = repositoryId,
+            CompanyId = _companyId,
+            Number = number,
+            Title = title,
+            Body = body,
+            State = PullRequestState.Open,
+            AuthorLogin = "MRigonM",
+            HeadBranch = "main",
+            OpenedAtUtc = DateTime.UtcNow,
+            GitHubUpdatedAtUtc = DateTime.UtcNow,
+            HtmlUrl = $"https://github.com/rigon-org/api/pull/{number}",
+        };
+
+        db.GitHubPullRequests.Add(pull);
+        await db.SaveChangesAsync();
+
+        return pull.Id;
+    }
+
     private async SystemTask.Task<TaskLinkResolution> Resolve()
     {
         await using var db = NewContext();
@@ -455,5 +498,161 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
         await using (var db = NewContext())
             Assert.Empty(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchNameCarryingAKey_ProducesALink()
+    {
+        var branchId = await SeedBranch("feature/TS-42-activity-panel", _apiRepositoryId);
+
+        var result = await Resolve();
+
+        Assert.Equal(1, result.LinksCreated);
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts42TaskId, link.TaskId);
+        Assert.Equal(branchId, link.GitHubBranchId);
+        Assert.Null(link.GitHubCommitId);
+        Assert.Null(link.GitHubPullRequestId);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestTitle_ProducesALink()
+    {
+        var pullId = await SeedPullRequest(17, "TS-42 wire the panel", null, _apiRepositoryId);
+
+        await Resolve();
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts42TaskId, link.TaskId);
+        Assert.Equal(pullId, link.GitHubPullRequestId);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestBody_ProducesALink_WhenTheTitleCarriesNoKey()
+    {
+        await SeedPullRequest(18, "Wire the panel", "Closes TS-51.", _apiRepositoryId);
+
+        await Resolve();
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts51TaskId, link.TaskId);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestNamingTheSameKeyInTitleAndBody_ProducesOneLink()
+    {
+        await SeedPullRequest(19, "TS-42 wire the panel", "Part of TS-42.", _apiRepositoryId);
+
+        var result = await Resolve();
+
+        Assert.Equal(1, result.LinksCreated);
+        // One key, not two: title and body are scanned as one text. LinksCreated alone cannot
+        // tell the two designs apart — the duplicate-suppression set would collapse a second
+        // attempt anyway — so KeysSeen is what pins the scan down.
+        Assert.Equal(1, result.KeysSeen);
+
+        await using var db = NewContext();
+        Assert.Single(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchOnAnUnlinkedRepository_ProducesNoLink()
+    {
+        // The authorization boundary applies to every record kind, not just commits.
+        await SeedBranch("TS-42-sneak", _webRepositoryId);
+        await SeedPullRequest(20, "TS-42 sneak", "TS-51 too", _webRepositoryId);
+
+        var result = await Resolve();
+
+        Assert.Equal(0, result.LinksCreated);
+
+        await using var db = NewContext();
+        Assert.Empty(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task OneTaskLinkedFromACommitABranchAndAPullRequest_GetsThreeLinks()
+    {
+        await SeedCommit("TS-42 wire the panel", _apiRepositoryId);
+        await SeedBranch("TS-42-fix", _apiRepositoryId);
+        await SeedPullRequest(21, "TS-42 wire the panel", null, _apiRepositoryId);
+
+        var result = await Resolve();
+
+        Assert.Equal(3, result.LinksCreated);
+
+        await using var db = NewContext();
+        var links = await db.TaskLinks.ToListAsync();
+
+        Assert.All(links, l => Assert.Equal(_ts42TaskId, l.TaskId));
+        Assert.Single(links, l => l.GitHubCommitId is not null);
+        Assert.Single(links, l => l.GitHubBranchId is not null);
+        Assert.Single(links, l => l.GitHubPullRequestId is not null);
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedBranchOrPullRequest_IsNeverScanned()
+    {
+        // The branch and pull request reads must carry the soft-delete filter. A stray
+        // IgnoreQueryFilters on either one leaks records the mirror has already retired, and
+        // no LinksCreated assertion can see it once a link for that record already exists —
+        // KeysSeen is the only counter that reacts to the read itself.
+        var branchId = await SeedBranch("TS-42-fix", _apiRepositoryId);
+        var pullId = await SeedPullRequest(22, "TS-51 sync it", null, _apiRepositoryId);
+
+        await using (var db = NewContext())
+        {
+            var branch = await db.GitHubBranches.SingleAsync(b => b.Id == branchId);
+            branch.IsDeleted = true;
+            branch.DeletedAt = DateTime.UtcNow;
+
+            var pull = await db.GitHubPullRequests.SingleAsync(p => p.Id == pullId);
+            pull.IsDeleted = true;
+            pull.DeletedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Resolve();
+
+        Assert.Equal(0, result.KeysSeen);
+        Assert.Equal(0, result.LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedBranch_StopsProducingNewLinks_ButItsExistingLinkSurvives()
+    {
+        var branchId = await SeedBranch("TS-42-fix", _apiRepositoryId);
+        await Resolve();
+
+        await using (var db = NewContext())
+        {
+            var branch = await db.GitHubBranches.SingleAsync(b => b.Id == branchId);
+            branch.IsDeleted = true;
+            branch.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Resolve();
+
+        Assert.Equal(0, result.LinksCreated);
+
+        await using (var db = NewContext())
+        {
+            // The link is not cleaned up: a branch that went away is reported, never
+            // silently vanished.
+            var link = await db.TaskLinks.SingleAsync();
+            Assert.Equal(branchId, link.GitHubBranchId);
+        }
     }
 }

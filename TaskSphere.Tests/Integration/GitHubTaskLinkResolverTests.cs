@@ -157,14 +157,14 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         return commit.Id;
     }
 
-    private async SystemTask.Task<int> SeedBranch(string name, int repositoryId)
+    private async SystemTask.Task<int> SeedBranch(string name, int repositoryId, Guid? companyId = null)
     {
         await using var db = NewContext();
 
         var branch = new TaskSphere.Domain.Entities.GitHubBranch
         {
             GitHubRepositoryId = repositoryId,
-            CompanyId = _companyId,
+            CompanyId = companyId ?? _companyId,
             Name = name,
             HeadSha = "aaaaaaa",
         };
@@ -175,14 +175,14 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         return branch.Id;
     }
 
-    private async SystemTask.Task<int> SeedPullRequest(int number, string title, string? body, int repositoryId)
+    private async SystemTask.Task<int> SeedPullRequest(int number, string title, string? body, int repositoryId, Guid? companyId = null)
     {
         await using var db = NewContext();
 
         var pull = new TaskSphere.Domain.Entities.GitHubPullRequest
         {
             GitHubRepositoryId = repositoryId,
-            CompanyId = _companyId,
+            CompanyId = companyId ?? _companyId,
             Number = number,
             Title = title,
             Body = body,
@@ -654,5 +654,70 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
             var link = await db.TaskLinks.SingleAsync();
             Assert.Equal(branchId, link.GitHubBranchId);
         }
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedCommit_IsNeverScanned()
+    {
+        // The third kind, pinned for the same reason the branch and pull request above are:
+        // a stray IgnoreQueryFilters on the read is the one mutation no downstream assertion
+        // catches. Nothing soft-deletes a commit today, which is exactly why this read would
+        // rot unwatched — it is the filter that is under test here, not a live scenario.
+        var commitId = await SeedCommit("TS-42 wire the panel", _apiRepositoryId);
+
+        await using (var db = NewContext())
+        {
+            var commit = await db.GitHubCommits.SingleAsync(c => c.Id == commitId);
+            commit.IsDeleted = true;
+            commit.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Resolve();
+
+        Assert.Equal(0, result.KeysSeen);
+        Assert.Equal(0, result.LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchOrPullRequestBelongingToAnotherCompany_IsNeverScanned()
+    {
+        // The commit read has been pinned to its company since Task 4; these two had not been.
+        // Both rows sit on api, which IS linked to TS, so the repository-link check waves them
+        // through — the company predicate on the read is the only thing standing between the
+        // other tenant's records and a TS task. KeysSeen, not LinksCreated, is what reacts to
+        // the read itself.
+        await SeedBranch("TS-42-from-elsewhere", _apiRepositoryId, _otherCompanyId);
+        await SeedPullRequest(23, "TS-51 from elsewhere", null, _apiRepositoryId, _otherCompanyId);
+
+        var result = await Resolve();
+
+        Assert.Equal(0, result.KeysSeen);
+        Assert.Equal(0, result.LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.TaskLinks.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ReRunningTheResolver_CreatesNoDuplicateBranchOrPullRequestLink()
+    {
+        // Task 4's re-run test only ever seeded a commit, so the branch and pull request halves
+        // of the existing-link set were unread. Forget either one and the second run does not
+        // merely double-count: it throws, because the per-kind unique indexes are real.
+        await SeedBranch("TS-42-fix", _apiRepositoryId);
+        await SeedPullRequest(24, "TS-51 sync it", null, _apiRepositoryId);
+
+        var first = await Resolve();
+        var second = await Resolve();
+
+        Assert.Equal(2, first.LinksCreated);
+        Assert.Equal(0, second.LinksCreated);
+
+        await using (var db = NewContext())
+            Assert.Equal(2, await db.TaskLinks.CountAsync());
     }
 }

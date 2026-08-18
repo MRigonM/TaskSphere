@@ -121,7 +121,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     /// </summary>
     private sealed class FakeApiClient : IGitHubApiClient
     {
-        private readonly List<(string Match, string Body)> _responses = new();
+        private readonly List<(string Match, string Body, string? LinkHeader)> _responses = new();
         private readonly Dictionary<string, Error> _failures = new(StringComparer.Ordinal);
 
         public List<string> RequestedUrls { get; } = new();
@@ -130,7 +130,13 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         public FakeApiClient On(string urlContains, string body)
         {
-            _responses.Add((urlContains, body));
+            _responses.Add((urlContains, body, null));
+            return this;
+        }
+
+        public FakeApiClient On(string urlContains, string body, string? linkHeader)
+        {
+            _responses.Add((urlContains, body, linkHeader));
             return this;
         }
 
@@ -149,9 +155,9 @@ public class GitHubActivitySyncTests : IAsyncLifetime
                 if (url.Contains(match, StringComparison.Ordinal))
                     return Task.FromResult(Result<GitHubResponse>.Failure(error));
 
-            foreach (var (match, body) in _responses)
+            foreach (var (match, body, linkHeader) in _responses)
                 if (url.Contains(match, StringComparison.Ordinal))
-                    return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse(body, null)));
+                    return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse(body, linkHeader)));
 
             return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse("[]", null)));
         }
@@ -686,6 +692,55 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         await using var db = NewContext();
         Assert.Equal("aaa1111", (await db.GitHubBranches.SingleAsync()).HeadSha);
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchesResponseWithANextPageLink_DoesNotSoftDeleteAbsentBranches()
+    {
+        // A partial page cannot distinguish "this branch is gone" from "this branch is on page 2".
+        // The absent-branch soft-delete must be skipped when the Link header advertises a next page.
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb"))));
+
+        // Second sync returns only main, but with a Link header indicating more pages exist.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "ccc")), linkHeader: "rel=\"next\", rel=\"last\"");
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+
+        await using var db = NewContext();
+        // Both branches still live; the absent pass was skipped because the page is incomplete.
+        Assert.Equal(2, await db.GitHubBranches.ToListAsync().ContinueWith(t => t.Result.Count()));
+        var main = await db.GitHubBranches.SingleAsync(b => b.Name == "main");
+        var ts42 = await db.GitHubBranches.SingleAsync(b => b.Name == "TS-42-fix");
+
+        Assert.False(main.IsDeleted);
+        Assert.False(ts42.IsDeleted);
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchesResponseWithoutANextPageLink_SoftDeletesAbsentBranches()
+    {
+        // When the Link header is absent or has no rel="next", it's a complete page; the
+        // absent-branch pass must still run.
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb"))));
+
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "ccc")));
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+
+        await using var db = NewContext();
+        // TS-42-fix is soft-deleted because it's absent and no next page exists.
+        Assert.Single(await db.GitHubBranches.ToListAsync());
+        var gone = await db.GitHubBranches.IgnoreQueryFilters().SingleAsync(b => b.Name == "TS-42-fix");
+
+        Assert.True(gone.IsDeleted);
     }
 
     // ---- partial success --------------------------------------------------------------------

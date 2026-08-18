@@ -191,6 +191,13 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         // live rows that are not.
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+        if (response.Value!.LinkHeader?.Contains("rel=\"next\"") == true)
+        {
+            // The absent pass is only correct on a complete set. A partial page cannot
+            // distinguish "gone" from "on page 2".
+            return Result<List<string>>.Success(seen.ToList());
+        }
+
         var live = await _unitOfWork.GitHubBranches
             .GetByRepository(installation.CompanyId, repositoryRowId)
             .ToListAsync(cancellationToken);

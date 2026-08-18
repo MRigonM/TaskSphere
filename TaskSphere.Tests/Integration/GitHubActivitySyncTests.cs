@@ -438,6 +438,192 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         Assert.NotNull(link.GitHubCommitId);
     }
 
+    [Fact]
+    public async SystemTask.Task TheCommitsCall_AsksForAFullPage_AndSendsAnIso8601Since()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", "[]");
+
+        await Sync(api);
+
+        var call = Assert.Single(api.RequestedUrls.Where(u => u.Contains("/commits?", StringComparison.Ordinal)));
+
+        // Without per_page GitHub returns 30 commits per branch and the rest are never mirrored
+        // — no error, just a panel quietly missing history.
+        Assert.Contains("per_page=100", call, StringComparison.Ordinal);
+
+        // The literal wire shape, not a value that merely round-trips through DateTime.Parse:
+        // parsing it back with a null provider reads the same ambient culture that formatted it,
+        // so the two agree even when both are wrong.
+        var since = call.Split("since=")[1].Split('&')[0];
+
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", since);
+    }
+
+    [Fact]
+    public async SystemTask.Task TheSinceParameter_IsBuiltInvariantly_NotInTheAmbientCulture()
+    {
+        // ':' in a .NET custom format string is the culture's TIME SEPARATOR. Under fi-FI an
+        // interpolated $"{since:...HH:mm:ss}" emits "10.00.00Z", which GitHub rejects — and no
+        // ordinary test could see it, because the assertions parse in that same culture.
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("fi-FI");
+
+        try
+        {
+            var api = new FakeApiClient()
+                .On("/branches", Branches(("main", "aaa")))
+                .On("/commits", "[]");
+
+            await Sync(api);
+
+            var call = Assert.Single(api.RequestedUrls.Where(u => u.Contains("/commits?", StringComparison.Ordinal)));
+            var since = call.Split("since=")[1].Split('&')[0];
+
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", since);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingCommitsCall_FailsThatRepository_RatherThanReportingItSynced()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .Fail("/commits", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+
+        // Swallowing this would report a repository as synced having mirrored no commits, and
+        // stamp the installation as looked-at on the strength of it.
+        Assert.Equal(0, result.Value!.RepositoriesSynced);
+
+        var failure = Assert.Single(result.Value.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Equal("Rate limit exceeded.", failure.Reason);
+
+        await using var db = NewContext();
+        Assert.Null((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AnUnreadableCommitsResponse_FailsThatRepository_NotSilently()
+    {
+        var result = await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", "{ not json"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Value!.RepositoriesSynced);
+        Assert.Contains("unreadable", Assert.Single(result.Value.Failures).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitsBodyOfNull_FailsThatRepository_NotSilently()
+    {
+        var result = await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", "null"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Value!.RepositoriesSynced);
+        Assert.Contains("no commits list", Assert.Single(result.Value.Failures).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitWithNoSha_IsSkipped_AndNotCounted()
+    {
+        // Mirrors the nameless-branch case: Sha is NOT NULL and is half of the natural key, so
+        // an entry without one is a row that was never going to exist.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits",
+                "[{\"sha\":\"1111111111111111111111111111111111111111\"," +
+                "\"html_url\":\"https://github.com/rigon-org/api/commit/1111111111111111111111111111111111111111\"," +
+                "\"commit\":{\"message\":\"TS-42 wire it\",\"author\":{\"name\":\"Rigon\",\"date\":\"2026-08-11T10:00:00Z\"}}," +
+                "\"author\":{\"login\":\"MRigonM\"}}," +
+                "{\"commit\":{\"message\":\"no sha at all\",\"author\":{\"name\":\"Rigon\",\"date\":\"2026-08-11T10:00:00Z\"}}}]");
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Failures);
+        Assert.Equal(1, result.Value.Commits);
+
+        await using var db = NewContext();
+        Assert.Equal("1111111111111111111111111111111111111111", (await db.GitHubCommits.SingleAsync()).Sha);
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedCommit_IsRevived_RatherThanLeftHidden()
+    {
+        var payload = () => new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")));
+
+        await Sync(payload());
+
+        await using (var db = NewContext())
+        {
+            var commit = await db.GitHubCommits.SingleAsync();
+            commit.IsDeleted = true;
+            commit.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await Sync(payload());
+
+        await using (var db = NewContext())
+        {
+            // The soft-deleted row still occupies IX_GitHubCommits_RepositoryId_Sha, so the
+            // upsert cannot insert beside it — reviving is the only way the history comes back.
+            var commit = await db.GitHubCommits.SingleAsync();
+
+            Assert.False(commit.IsDeleted);
+            Assert.Null(commit.DeletedAt);
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task EachRepositorysCommits_AreAttributedToThatRepository()
+    {
+        await using (var db = NewContext())
+        {
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 in api", "MRigonM")))
+            .On("/repos/rigon-org/web/commits", Commits(("2222222222222222222222222222222222222222", "TS-42 in web", "MRigonM")))
+            .On("/branches", Branches(("main", "aaa")));
+
+        var result = await Sync(api);
+
+        Assert.Equal(2, result.Value!.Commits);
+
+        await using var db2 = NewContext();
+
+        // A hardcoded repository id passes every single-repository fixture, then files one
+        // repository's history under another the moment a company links a second repo.
+        Assert.Equal(_apiRepositoryId,
+            (await db2.GitHubCommits.SingleAsync(c => c.Sha.StartsWith("1111"))).GitHubRepositoryId);
+        Assert.Equal(_webRepositoryId,
+            (await db2.GitHubCommits.SingleAsync(c => c.Sha.StartsWith("2222"))).GitHubRepositoryId);
+    }
+
     // ---- what the reads must not see ------------------------------------------------------
 
     [Fact]
@@ -694,6 +880,16 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         Assert.Equal("aaa1111", (await db.GitHubBranches.SingleAsync()).HeadSha);
     }
 
+    /// <summary>A real GitHub pagination header, not a fragment that merely contains the substring.</summary>
+    private const string NextPageLink =
+        "<https://api.github.com/repositories/8301/branches?per_page=100&page=2>; rel=\"next\", " +
+        "<https://api.github.com/repositories/8301/branches?per_page=100&page=5>; rel=\"last\"";
+
+    /// <summary>The LAST page of a paginated set: it has a Link header, but no next.</summary>
+    private const string LastPageLink =
+        "<https://api.github.com/repositories/8301/branches?per_page=100&page=4>; rel=\"prev\", " +
+        "<https://api.github.com/repositories/8301/branches?per_page=100&page=1>; rel=\"first\"";
+
     [Fact]
     public async SystemTask.Task ABranchesResponseWithANextPageLink_DoesNotSoftDeleteAbsentBranches()
     {
@@ -704,7 +900,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         // Second sync returns only main, but with a Link header indicating more pages exist.
         var api = new FakeApiClient()
-            .On("/branches", Branches(("main", "ccc")), linkHeader: "rel=\"next\", rel=\"last\"");
+            .On("/branches", Branches(("main", "ccc")), linkHeader: NextPageLink);
 
         var result = await Sync(api);
 
@@ -712,12 +908,51 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         await using var db = NewContext();
         // Both branches still live; the absent pass was skipped because the page is incomplete.
-        Assert.Equal(2, await db.GitHubBranches.ToListAsync().ContinueWith(t => t.Result.Count()));
+        Assert.Equal(2, await db.GitHubBranches.CountAsync());
         var main = await db.GitHubBranches.SingleAsync(b => b.Name == "main");
         var ts42 = await db.GitHubBranches.SingleAsync(b => b.Name == "TS-42-fix");
 
         Assert.False(main.IsDeleted);
         Assert.False(ts42.IsDeleted);
+
+        // Skipping the absent pass must not skip the upsert: the branches that DID arrive on
+        // the partial page are real branches, and their head moved.
+        Assert.Equal("ccc", main.HeadSha);
+    }
+
+    [Fact]
+    public async SystemTask.Task APartialPagesBranches_StillHaveTheirCommitsFetched()
+    {
+        // The guard returns the names it saw, and that list is what drives the commits pass.
+        // Returning an empty list instead would silently sync no commits at all for every
+        // paginated repository — invisible, because the branches themselves still look right.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")), linkHeader: NextPageLink)
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")));
+
+        var result = await Sync(api);
+
+        Assert.Equal(1, result.Value!.Commits);
+        Assert.Contains(api.RequestedUrls, u => u.Contains("/commits?", StringComparison.Ordinal)
+                                             && u.Contains("sha=main", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async SystemTask.Task TheLastPageOfAPaginatedSet_StillSoftDeletesAbsentBranches()
+    {
+        // A Link header is present but carries no rel="next", so this IS the complete tail of
+        // the set and the absent pass must run. Matching on a bare "rel=" would skip it here
+        // and no branch would ever be retired for a repository that paginates at all.
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb"))));
+
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")), linkHeader: LastPageLink));
+
+        await using var db = NewContext();
+        var gone = await db.GitHubBranches.IgnoreQueryFilters().SingleAsync(b => b.Name == "TS-42-fix");
+
+        Assert.True(gone.IsDeleted);
     }
 
     [Fact]
@@ -820,14 +1055,14 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         await Sync(api);
 
-        // Extract repository names from all URLs (branches and commits); repositories must appear
-        // in name order regardless of the order of different endpoint types.
-        var repoNames = api.RequestedUrls
-            .Select(u => u.Split("/repos/")[1].Split(new[] { "/branches", "/commits" }, StringSplitOptions.None)[0])
-            .Distinct()
-            .OrderBy(r => r)
+        // The sequence as requested, NOT a sorted copy of it. Sorting the collected names and
+        // then asserting they are sorted is an assertion that cannot fail: it let both the
+        // removal of OrderBy and its inversion to OrderByDescending survive a mutation sweep.
+        var branchCallOrder = api.RequestedUrls
+            .Where(u => u.Contains("/branches", StringComparison.Ordinal))
+            .Select(u => u.Split("/repos/")[1].Split("/branches")[0])
             .ToArray();
 
-        Assert.Equal(new[] { "rigon-org/admin", "rigon-org/api", "rigon-org/web" }, repoNames);
+        Assert.Equal(new[] { "rigon-org/admin", "rigon-org/api", "rigon-org/web" }, branchCallOrder);
     }
 }

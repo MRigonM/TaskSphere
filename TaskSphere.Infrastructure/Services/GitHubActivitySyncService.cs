@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -77,10 +78,10 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
                 continue;
             }
 
-            branchCount += branchResult.Value.Count;
+            branchCount += branchResult.Value!.Count;
 
             var commitResult = await SyncCommitsAsync(
-                installation, repository.Id, repository.FullName, branchResult.Value, since, cancellationToken);
+                installation, repository.Id, repository.FullName, branchResult.Value!, since, cancellationToken);
 
             if (!commitResult.IsSuccess)
             {
@@ -231,11 +232,18 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
         foreach (var branch in branches)
         {
+            // Formatted invariantly, not interpolated: ':' in a custom format string is the
+            // culture's TIME SEPARATOR, so `$"{since:...HH:mm:ss}"` emits "10.00.00Z" under a
+            // culture like fi-FI and GitHub rejects the timestamp. Proven with a probe, not
+            // reasoned about — and no test could have caught it, because DateTime.Parse with a
+            // null provider reads the same ambient culture the bug came from.
+            var sinceParameter = since.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+
             // Escaped: branch names contain slashes, and an unescaped one changes the path
             // rather than the query.
             var url = $"https://api.github.com/repos/{fullName}/commits" +
                       $"?sha={Uri.EscapeDataString(branch)}" +
-                      $"&since={since:yyyy-MM-ddTHH:mm:ssZ}" +
+                      $"&since={sinceParameter}" +
                       "&per_page=100";
 
             var response = await _apiClient.GetAsync(installation.InstallationId, url, cancellationToken);

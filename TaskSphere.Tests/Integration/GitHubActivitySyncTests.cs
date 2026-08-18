@@ -161,6 +161,16 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         => "[" + string.Join(",", branches.Select(b =>
             $"{{\"name\":\"{b.Name}\",\"commit\":{{\"sha\":\"{b.Sha}\"}}}}")) + "]";
 
+    private static string Commits(params (string Sha, string Message, string? Login)[] commits)
+        => "[" + string.Join(",", commits.Select(c =>
+            "{\"sha\":\"" + c.Sha + "\"," +
+            "\"html_url\":\"https://github.com/rigon-org/api/commit/" + c.Sha + "\"," +
+            "\"commit\":{\"message\":" + JsonEncode(c.Message) + "," +
+            "\"author\":{\"name\":\"Rigon\",\"date\":\"2026-08-11T10:00:00Z\"}}," +
+            "\"author\":" + (c.Login is null ? "null" : "{\"login\":\"" + c.Login + "\"}") + "}")) + "]";
+
+    private static string JsonEncode(string value) => System.Text.Json.JsonSerializer.Serialize(value);
+
     private async SystemTask.Task<Result<SyncActivityResultDto>> Sync(FakeApiClient api)
     {
         await using var db = NewContext();
@@ -302,6 +312,126 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         Assert.Equal("GitHub.NotConnected", result.Errors[0].Code);
     }
 
+    [Fact]
+    public async SystemTask.Task Commits_AreFetchedOncePerBranch_WithTheWindowOnTheSinceParameter()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")));
+
+        await Sync(api);
+
+        var commitCalls = api.RequestedUrls.Where(u => u.Contains("/commits?", StringComparison.Ordinal)).ToList();
+
+        Assert.Equal(2, commitCalls.Count);
+        Assert.Contains(commitCalls, u => u.Contains("sha=main", StringComparison.Ordinal));
+        Assert.Contains(commitCalls, u => u.Contains("sha=TS-42-fix", StringComparison.Ordinal));
+
+        // The window, not a watermark. Asserted as a parsed date so a format change is a
+        // failure rather than a silently different request.
+        foreach (var call in commitCalls)
+        {
+            var since = call.Split("since=")[1].Split('&')[0];
+            var parsed = DateTime.Parse(Uri.UnescapeDataString(since), null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+            Assert.InRange(DateTime.UtcNow - parsed, TimeSpan.FromDays(29.9), TimeSpan.FromDays(30.1));
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchNameWithASlash_IsEscapedIntoTheCommitsUrl()
+    {
+        // feature/TS-42-fix is the branch shape this repo actually uses; an unescaped slash
+        // would request a different repository path entirely.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("feature/TS-42-fix", "bbb")))
+            .On("/commits", "[]");
+
+        await Sync(api);
+
+        var call = Assert.Single(api.RequestedUrls.Where(u => u.Contains("/commits?", StringComparison.Ordinal)));
+
+        Assert.Contains("sha=feature%2FTS-42-fix", call, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task Commits_AreUpserted_WithMessageAuthorAndUrl()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(
+                ("1111111111111111111111111111111111111111", "TS-42 wire the panel", "MRigonM"),
+                ("2222222222222222222222222222222222222222", "chore: tidy", null)));
+
+        var result = await Sync(api);
+
+        Assert.Equal(2, result.Value!.Commits);
+
+        await using var db = NewContext();
+        var commits = await db.GitHubCommits.OrderBy(c => c.Sha).ToListAsync();
+
+        Assert.Equal(2, commits.Count);
+        Assert.Equal("TS-42 wire the panel", commits[0].Message);
+        Assert.Equal("Rigon", commits[0].AuthorName);
+        Assert.Equal("MRigonM", commits[0].AuthorLogin);
+        Assert.Equal(new DateTime(2026, 8, 11, 10, 0, 0), commits[0].CommittedAtUtc);
+        Assert.EndsWith("/commit/1111111111111111111111111111111111111111", commits[0].HtmlUrl, StringComparison.Ordinal);
+
+        // GitHub could not match the second commit to an account; the git author still stands.
+        Assert.Null(commits[1].AuthorLogin);
+        Assert.Equal("Rigon", commits[1].AuthorName);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitReachableFromTwoBranches_IsStoredOnce()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")));
+
+        var result = await Sync(api);
+
+        // Both branch listings return the same commit; the natural key collapses them.
+        Assert.Equal(1, result.Value!.Commits);
+
+        await using var db = NewContext();
+        Assert.Single(await db.GitHubCommits.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ReSyncingTheSameCommits_CreatesNoDuplicates()
+    {
+        var api = () => new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")));
+
+        await Sync(api());
+        await Sync(api());
+
+        await using var db = NewContext();
+
+        Assert.Equal(1, await db.GitHubCommits.IgnoreQueryFilters().CountAsync());
+        Assert.Single(await db.TaskLinks.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitMessageNamingATask_LinksThroughTheResolver()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "fixes TS-42 at last", "MRigonM")));
+
+        var result = await Sync(api);
+
+        Assert.Equal(1, result.Value!.LinksCreated);
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts42TaskId, link.TaskId);
+        Assert.NotNull(link.GitHubCommitId);
+    }
+
     // ---- what the reads must not see ------------------------------------------------------
 
     [Fact]
@@ -417,7 +547,9 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var result = await Sync(api);
 
         Assert.Equal(1, result.Value!.RepositoriesSynced);
-        Assert.Contains("rigon-org/api", Assert.Single(api.RequestedUrls), StringComparison.Ordinal);
+        // Verify only our company's repository was requested; check no URL mentions "other-org"
+        Assert.DoesNotContain(api.RequestedUrls, u => u.Contains("other-org", StringComparison.Ordinal));
+        Assert.Contains(api.RequestedUrls, u => u.Contains("rigon-org/api", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -468,8 +600,9 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // A wrong installation id is a token minted for someone else's account, not a counter
         // bug; per_page is what keeps a 31-branch repository from having 70 branches marked
         // absent on the strength of GitHub's default page size.
-        Assert.Equal(TheInstallationId, Assert.Single(api.RequestedInstallationIds));
-        Assert.Contains("per_page=100", Assert.Single(api.RequestedUrls), StringComparison.Ordinal);
+        Assert.All(api.RequestedInstallationIds, id => Assert.Equal(TheInstallationId, id));
+        var branchesUrl = Assert.Single(api.RequestedUrls.Where(u => u.Contains("/branches", StringComparison.Ordinal)));
+        Assert.Contains("per_page=100", branchesUrl, StringComparison.Ordinal);
     }
 
     // ---- what the parser must survive ------------------------------------------------------
@@ -632,8 +765,14 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         await Sync(api);
 
-        Assert.Equal(
-            new[] { "rigon-org/admin", "rigon-org/api", "rigon-org/web" },
-            api.RequestedUrls.Select(u => u.Split("/repos/")[1].Split("/branches")[0]).ToArray());
+        // Extract repository names from all URLs (branches and commits); repositories must appear
+        // in name order regardless of the order of different endpoint types.
+        var repoNames = api.RequestedUrls
+            .Select(u => u.Split("/repos/")[1].Split(new[] { "/branches", "/commits" }, StringSplitOptions.None)[0])
+            .Distinct()
+            .OrderBy(r => r)
+            .ToArray();
+
+        Assert.Equal(new[] { "rigon-org/admin", "rigon-org/api", "rigon-org/web" }, repoNames);
     }
 }

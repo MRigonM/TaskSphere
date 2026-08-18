@@ -18,8 +18,8 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
     /// One number, one meaning — deliberately not configurable. A fixed window is always safe
     /// to re-run, which a per-repository watermark is not: force-push and rebase make "what
     /// changed since last time" genuinely hard to answer correctly.
-    /// Nothing reads it yet: branches are fetched whole, so the window only starts applying
-    /// when the commits pass lands.
+    /// The window bounds the commits query: only commits after DateTime.UtcNow.AddDays(-SyncWindowDays)
+    /// are fetched, and it is applied on every run so the pass is naturally idempotent.
     /// </summary>
     private const int SyncWindowDays = 30;
 
@@ -64,18 +64,31 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
         var synced = 0;
         var branchCount = 0;
+        var commitCount = 0;
+        var since = DateTime.UtcNow.AddDays(-SyncWindowDays);
 
         foreach (var repository in repositories)
         {
-            var result = await SyncBranchesAsync(installation, repository.Id, repository.FullName, cancellationToken);
+            var branchResult = await SyncBranchesAsync(installation, repository.Id, repository.FullName, cancellationToken);
 
-            if (!result.IsSuccess)
+            if (!branchResult.IsSuccess)
             {
-                failures.Add(new SyncFailureDto(repository.FullName, result.Errors[0].Description));
+                failures.Add(new SyncFailureDto(repository.FullName, branchResult.Errors[0].Description));
                 continue;
             }
 
-            branchCount += result.Value;
+            branchCount += branchResult.Value.Count;
+
+            var commitResult = await SyncCommitsAsync(
+                installation, repository.Id, repository.FullName, branchResult.Value, since, cancellationToken);
+
+            if (!commitResult.IsSuccess)
+            {
+                failures.Add(new SyncFailureDto(repository.FullName, commitResult.Errors[0].Description));
+                continue;
+            }
+
+            commitCount += commitResult.Value;
             synced++;
         }
 
@@ -91,18 +104,18 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         }
 
         // Named, because six positional members of which four are ints is a transposition
-        // waiting to happen — and it says out loud that the two zeroes are unimplemented
-        // passes rather than counts that came back empty.
+        // waiting to happen — and it says out loud that the zero is an unimplemented
+        // pass rather than a count that came back empty.
         return Result<SyncActivityResultDto>.Success(new SyncActivityResultDto(
             RepositoriesSynced: synced,
-            Commits: 0,
+            Commits: commitCount,
             Branches: branchCount,
             PullRequests: 0,
             LinksCreated: resolution.LinksCreated,
             Failures: failures));
     }
 
-    private async Task<Result<int>> SyncBranchesAsync(
+    private async Task<Result<List<string>>> SyncBranchesAsync(
         GitHubInstallation installation,
         int repositoryRowId,
         string fullName,
@@ -113,7 +126,7 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         var response = await _apiClient.GetAsync(installation.InstallationId, url, cancellationToken);
 
         if (!response.IsSuccess)
-            return Result<int>.Failure(response.Errors[0]);
+            return Result<List<string>>.Failure(response.Errors[0]);
 
         List<BranchPayload>? payload;
 
@@ -123,11 +136,11 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         }
         catch (JsonException)
         {
-            return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned an unreadable branches response for {fullName}."));
+            return Result<List<string>>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned an unreadable branches response for {fullName}."));
         }
 
         if (payload is null)
-            return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no branches list for {fullName}."));
+            return Result<List<string>>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no branches list for {fullName}."));
 
         // The store decides what "the same branch" means, and it is case-insensitive:
         // GitHubBranches.Name sits under SQL_Latin1_General_CP1_CI_AS and
@@ -191,7 +204,95 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             await _unitOfWork.GitHubBranches.Update(branch, cancellationToken);
         }
 
-        return Result<int>.Success(seen.Count);
+        return Result<List<string>>.Success(seen.ToList());
+    }
+
+    /// <summary>
+    /// One listing per branch, filtered by <c>since</c>. A commit reachable from two branches
+    /// comes back twice and collapses on the natural key, which is why the upsert is keyed on
+    /// (repository, sha) rather than on the branch it arrived through.
+    /// </summary>
+    private async Task<Result<int>> SyncCommitsAsync(
+        GitHubInstallation installation,
+        int repositoryRowId,
+        string fullName,
+        List<string> branches,
+        DateTime since,
+        CancellationToken cancellationToken)
+    {
+        var inserted = 0;
+
+        foreach (var branch in branches)
+        {
+            // Escaped: branch names contain slashes, and an unescaped one changes the path
+            // rather than the query.
+            var url = $"https://api.github.com/repos/{fullName}/commits" +
+                      $"?sha={Uri.EscapeDataString(branch)}" +
+                      $"&since={since:yyyy-MM-ddTHH:mm:ssZ}" +
+                      "&per_page=100";
+
+            var response = await _apiClient.GetAsync(installation.InstallationId, url, cancellationToken);
+
+            if (!response.IsSuccess)
+                return Result<int>.Failure(response.Errors[0]);
+
+            List<CommitPayload>? payload;
+
+            try
+            {
+                payload = JsonSerializer.Deserialize<List<CommitPayload>>(response.Value!.Body);
+            }
+            catch (JsonException)
+            {
+                return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned an unreadable commits response for {fullName}."));
+            }
+
+            if (payload is null)
+                return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no commits list for {fullName}."));
+
+            foreach (var commit in payload)
+            {
+                if (string.IsNullOrEmpty(commit.Sha))
+                    continue;
+
+                var existing = await _unitOfWork.GitHubCommits
+                    .GetByShaIncludingDeletedAsync(repositoryRowId, commit.Sha, cancellationToken);
+
+                if (existing is not null)
+                {
+                    // A commit is immutable; the only thing worth doing to an existing row is
+                    // reviving it, so a repository that came back is not missing its history.
+                    if (existing.IsDeleted)
+                    {
+                        existing.IsDeleted = false;
+                        existing.DeletedAt = null;
+                        await _unitOfWork.GitHubCommits.Update(existing, cancellationToken);
+                    }
+
+                    continue;
+                }
+
+                await _unitOfWork.GitHubCommits.AddAsync(new TaskSphere.Domain.Entities.GitHubCommit
+                {
+                    GitHubRepositoryId = repositoryRowId,
+                    CompanyId = installation.CompanyId,
+                    Sha = commit.Sha,
+                    Message = commit.Commit?.Message ?? "",
+                    AuthorName = commit.Commit?.Author?.Name ?? "",
+                    AuthorLogin = commit.Author?.Login,
+                    CommittedAtUtc = commit.Commit?.Author?.Date ?? DateTime.UtcNow,
+                    HtmlUrl = commit.HtmlUrl ?? "",
+                }, cancellationToken);
+
+                inserted++;
+
+                // Saved per commit so the next iteration's GetByShaIncludingDeletedAsync sees
+                // it: the same sha can arrive twice within one run, from two branches.
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return Result<int>.Success(inserted);
     }
 
     private sealed record BranchPayload(
@@ -200,4 +301,22 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
     private sealed record BranchCommitPayload(
         [property: JsonPropertyName("sha")] string? Sha);
+
+    private sealed record CommitPayload(
+        [property: JsonPropertyName("sha")] string? Sha,
+        [property: JsonPropertyName("html_url")] string? HtmlUrl,
+        [property: JsonPropertyName("commit")] CommitDetailPayload? Commit,
+        [property: JsonPropertyName("author")] CommitAuthorAccountPayload? Author);
+
+    private sealed record CommitDetailPayload(
+        [property: JsonPropertyName("message")] string? Message,
+        [property: JsonPropertyName("author")] CommitAuthorPayload? Author);
+
+    private sealed record CommitAuthorPayload(
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("date")] DateTime? Date);
+
+    /// <summary>Null when GitHub cannot match the commit to an account.</summary>
+    private sealed record CommitAuthorAccountPayload(
+        [property: JsonPropertyName("login")] string? Login);
 }

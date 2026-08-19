@@ -334,4 +334,236 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
         Assert.False(result.IsSuccess);
         Assert.Equal("NotFound", result.Errors[0].Code);
     }
+
+    /// <summary>
+    /// A second repository holding one record of each kind, every one of them linked to the
+    /// fixture's task. <paramref name="linkedToProjectId"/> is the project it is linked to;
+    /// null links it to no project at all. Every read test before this one seeded exactly one
+    /// repository, where "filtered to the authorized repositories" and "not filtered" are
+    /// indistinguishable.
+    /// </summary>
+    private async SystemTask.Task SeedASecondRepository(int? linkedToProjectId)
+    {
+        await using var db = NewContext();
+
+        var installationId = (await db.GitHubInstallations.SingleAsync()).Id;
+
+        var repository = new GitHubRepository
+        {
+            RepositoryId = 8402,
+            GitHubInstallationId = installationId,
+            CompanyId = _companyId,
+            FullName = "rigon-org/other",
+            DefaultBranch = "main",
+        };
+        db.GitHubRepositories.Add(repository);
+        await db.SaveChangesAsync();
+
+        if (linkedToProjectId is not null)
+        {
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = linkedToProjectId.Value,
+                GitHubRepositoryId = repository.Id,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+        }
+
+        var commit = new GitHubCommit
+        {
+            GitHubRepositoryId = repository.Id,
+            CompanyId = _companyId,
+            Sha = "fedcba0987654321fedcba0987654321fedcba09",
+            Message = "TS-42 from the other repository",
+            AuthorName = "Rigon",
+            AuthorLogin = "MRigonM",
+            CommittedAtUtc = new DateTime(2026, 8, 11, 11, 0, 0, DateTimeKind.Utc),
+            HtmlUrl = "https://github.com/rigon-org/other/commit/fedcba0",
+        };
+        var branch = new GitHubBranch
+        {
+            GitHubRepositoryId = repository.Id,
+            CompanyId = _companyId,
+            Name = "TS-42-other",
+            HeadSha = "fedcba0",
+        };
+        var pull = new GitHubPullRequest
+        {
+            GitHubRepositoryId = repository.Id,
+            CompanyId = _companyId,
+            Number = 18,
+            Title = "TS-42 from the other repository",
+            State = PullRequestState.Open,
+            AuthorLogin = "MRigonM",
+            HeadBranch = "TS-42-other",
+            OpenedAtUtc = new DateTime(2026, 8, 11, 8, 0, 0, DateTimeKind.Utc),
+            GitHubUpdatedAtUtc = new DateTime(2026, 8, 11, 8, 0, 0, DateTimeKind.Utc),
+            HtmlUrl = "https://github.com/rigon-org/other/pull/18",
+        };
+        db.GitHubCommits.Add(commit);
+        db.GitHubBranches.Add(branch);
+        db.GitHubPullRequests.Add(pull);
+        await db.SaveChangesAsync();
+
+        db.TaskLinks.AddRange(
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = commit.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branch.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubPullRequestId = pull.Id });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// A second record of each kind in the repository that IS linked, so the three orderings
+    /// are pinned. With one record apiece nothing distinguishes ascending from descending.
+    /// </summary>
+    private async SystemTask.Task SeedASecondRecordOfEachKind()
+    {
+        await using var db = NewContext();
+
+        var commit = new GitHubCommit
+        {
+            GitHubRepositoryId = _repositoryId,
+            CompanyId = _companyId,
+            Sha = "0000000111111112222222233333333444444455",
+            Message = "TS-42 the earlier commit",
+            AuthorName = "Rigon",
+            AuthorLogin = "MRigonM",
+            CommittedAtUtc = new DateTime(2026, 8, 9, 10, 0, 0, DateTimeKind.Utc),
+            HtmlUrl = "https://github.com/rigon-org/api/commit/0000000",
+        };
+        var branch = new GitHubBranch
+        {
+            GitHubRepositoryId = _repositoryId,
+            CompanyId = _companyId,
+            Name = "AAA-sorts-first",
+            HeadSha = "0000000",
+        };
+        var pull = new GitHubPullRequest
+        {
+            GitHubRepositoryId = _repositoryId,
+            CompanyId = _companyId,
+            Number = 16,
+            Title = "TS-42 the earlier pull request",
+            State = PullRequestState.Open,
+            AuthorLogin = "MRigonM",
+            HeadBranch = "AAA-sorts-first",
+            OpenedAtUtc = new DateTime(2026, 8, 8, 9, 0, 0, DateTimeKind.Utc),
+            GitHubUpdatedAtUtc = new DateTime(2026, 8, 8, 9, 0, 0, DateTimeKind.Utc),
+            HtmlUrl = "https://github.com/rigon-org/api/pull/16",
+        };
+        db.GitHubCommits.Add(commit);
+        db.GitHubBranches.Add(branch);
+        db.GitHubPullRequests.Add(pull);
+        await db.SaveChangesAsync();
+
+        db.TaskLinks.AddRange(
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = commit.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branch.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubPullRequestId = pull.Id });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async SystemTask.Task RecordsFromARepositoryLinkedToNoProject_AreNotRendered()
+    {
+        // The per-record authorization filter, which the unlink test cannot reach: there the
+        // authorized set is empty and the read returns before the filter ever runs.
+        await SeedASecondRepository(linkedToProjectId: null);
+
+        var result = await Read();
+
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value!.Commits).RepositoryFullName);
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value.Branches).RepositoryFullName);
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value.PullRequests).RepositoryFullName);
+    }
+
+    [Fact]
+    public async SystemTask.Task ARepositoryLinkedToAnotherProject_DoesNotAuthorizeThisTasksRecords()
+    {
+        // The link is looked up by project, not by company: another project's grant is not this
+        // project's grant, or any member of any project could read every repository's activity.
+        int otherProjectId;
+
+        await using (var db = NewContext())
+        {
+            var other = new Project { Name = "Other", Key = "OT", CompanyId = _companyId };
+            db.Projects.Add(other);
+            await db.SaveChangesAsync();
+            otherProjectId = other.Id;
+        }
+
+        await SeedASecondRepository(linkedToProjectId: otherProjectId);
+
+        var result = await Read();
+
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value!.Commits).RepositoryFullName);
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value.Branches).RepositoryFullName);
+        Assert.Equal("rigon-org/api", Assert.Single(result.Value.PullRequests).RepositoryFullName);
+    }
+
+    [Fact]
+    public async SystemTask.Task Commits_AreNewestFirst()
+    {
+        await SeedASecondRecordOfEachKind();
+
+        var result = await Read();
+
+        Assert.Collection(
+            result.Value!.Commits,
+            c => Assert.Equal(new DateTime(2026, 8, 11, 10, 0, 0), c.CommittedAtUtc),
+            c => Assert.Equal(new DateTime(2026, 8, 9, 10, 0, 0), c.CommittedAtUtc));
+    }
+
+    [Fact]
+    public async SystemTask.Task Branches_AreAlphabetical()
+    {
+        await SeedASecondRecordOfEachKind();
+
+        var result = await Read();
+
+        Assert.Collection(
+            result.Value!.Branches,
+            b => Assert.Equal("AAA-sorts-first", b.Name),
+            b => Assert.Equal("TS-42-fix", b.Name));
+    }
+
+    [Fact]
+    public async SystemTask.Task PullRequests_AreNewestFirst()
+    {
+        await SeedASecondRecordOfEachKind();
+
+        var result = await Read();
+
+        Assert.Collection(
+            result.Value!.PullRequests,
+            p => Assert.Equal(17, p.Number),
+            p => Assert.Equal(16, p.Number));
+    }
+
+    [Fact]
+    public async SystemTask.Task ATaskWhoseProjectWasDeleted_ReadsEmpty_RatherThanThrowing()
+    {
+        // Reachable in production: the task -> project FK is OnDelete(SetNull), so deleting a
+        // project leaves its tasks with no project. The links survive and must grant nothing,
+        // because a null project has no repository links to re-check against.
+        int orphanTaskId;
+
+        await using (var db = NewContext())
+        {
+            var task = new TaskEntity { Title = "Orphan", Number = 44, ProjectId = null, CompanyId = _companyId };
+            db.Set<TaskEntity>().Add(task);
+            await db.SaveChangesAsync();
+            orphanTaskId = task.Id;
+
+            var commitId = (await db.GitHubCommits.SingleAsync()).Id;
+            db.TaskLinks.Add(new TaskLink { CompanyId = _companyId, TaskId = orphanTaskId, GitHubCommitId = commitId });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await Read(OutsiderUserId, isCompanyAdmin: true, taskId: orphanTaskId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Commits);
+    }
 }

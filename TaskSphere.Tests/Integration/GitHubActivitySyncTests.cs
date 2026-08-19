@@ -1325,4 +1325,188 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         await using var db = NewContext();
         Assert.Null((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
     }
+
+    // ---- pull requests: the failure paths (added 2026-08-19 after a mutation sweep) -------
+    //
+    // The branches listing had two failure tests and the commits listing three, all asserting
+    // "_NotSilently". The pull requests listing had none, so deleting its failure report, or
+    // letting a failed listing un-sync the repository, changed nothing any test could see.
+
+    [Fact]
+    public async SystemTask.Task AFailingPullRequestsCall_IsReportedAgainstItsRepository_NotSilently()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .Fail("/pulls", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+
+        // The 2026-08-19 contract: the branch is the unit of partial success. This repository's
+        // branches were mirrored, so it counts as synced even though its pull requests did not
+        // come back — and the installation is honestly stamped as looked-at.
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+
+        var failure = Assert.Single(result.Value.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Equal("Rate limit exceeded.", failure.Reason);
+
+        // One listing per repository, so this failure is repository-scoped and names no branch.
+        Assert.Null(failure.Branch);
+
+        await using var db = NewContext();
+        Assert.NotNull((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AnUnreadablePullRequestsResponse_IsReportedAgainstItsRepository_NotSilently()
+    {
+        var result = await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", "{ not json"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+
+        var failure = Assert.Single(result.Value.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Contains("unreadable", failure.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestsBodyOfNull_IsReportedAgainstItsRepository_NotSilently()
+    {
+        var result = await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", "null"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+
+        var failure = Assert.Single(result.Value.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Contains("no pull requests list", failure.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task PullRequestCounts_AccumulateAcrossRepositories()
+    {
+        // With one repository in the fixture, "+=" and "=" are the same statement.
+        await using (var db = NewContext())
+        {
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        var result = await Sync(api);
+
+        Assert.Equal(2, result.Value!.RepositoriesSynced);
+        Assert.Equal(2, result.Value.PullRequests);
+    }
+
+    [Fact]
+    public async SystemTask.Task OpenedAtUtc_IsTheCreationTimestamp_NotTheUpdateTimestamp()
+    {
+        // The read orders the panel by OpenedAtUtc, so filling it from updated_at would reorder
+        // a task's pull requests every time one of them was touched. The helper's created_at is
+        // 2026-08-01; updated_at here is ten days later, so the two are distinguishable.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        var pull = await db.GitHubPullRequests.SingleAsync();
+
+        Assert.Equal(new DateTime(2026, 8, 1, 9, 0, 0), pull.OpenedAtUtc);
+        Assert.Equal(new DateTime(2026, 8, 11, 10, 0, 0), pull.GitHubUpdatedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task ASoftDeletedPullRequest_IsRevivedRatherThanDuplicated()
+    {
+        // IX_GitHubPullRequests_RepositoryId_Number is unfiltered, so the lookup must ignore the
+        // soft-delete filter: a filtered lookup would see nothing and insert straight into the
+        // index it collides with. Same failure the branches path was fixed for.
+        var first = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        await Sync(first);
+
+        await using (var db = NewContext())
+        {
+            var pull = await db.GitHubPullRequests.SingleAsync();
+            pull.IsDeleted = true;
+            pull.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var second = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", null, "2026-08-12T10:00:00Z")));
+
+        await Sync(second);
+
+        await using (var db = NewContext())
+        {
+            Assert.Equal(1, await db.GitHubPullRequests.IgnoreQueryFilters().CountAsync());
+
+            var pull = await db.GitHubPullRequests.SingleAsync();
+            Assert.False(pull.IsDeleted);
+            Assert.Null(pull.DeletedAt);
+            Assert.Equal(PullRequestState.Closed, pull.State);
+        }
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestWithNoUpdatedAt_IsTreatedAsFresh_NotAsTheEndOfTheListing()
+    {
+        // updated_at is absent rather than late. Because the scan BREAKS at the first pull
+        // request outside the window, reading a missing timestamp as "very old" would not skip
+        // one row — it would silently truncate the rest of the listing.
+        var noTimestamp = """[{"number":17,"title":"TS-42 no timestamp","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"TS-42-fix"},"created_at":"2026-08-01T09:00:00Z","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
+
+        var result = await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", noTimestamp));
+
+        Assert.Equal(1, result.Value!.PullRequests);
+
+        await using var db = NewContext();
+        Assert.Equal(17, (await db.GitHubPullRequests.SingleAsync()).Number);
+    }
+
+    [Fact]
+    public async SystemTask.Task ARenamedHeadBranch_IsOverwrittenOnResync()
+    {
+        // "Everything mutable is overwritten" is the stated contract of the update block, and
+        // the shared Pulls helper hardcodes one head ref, so nothing varied it.
+        static string PullWithHead(string headRef) => $$"""[{"number":17,"title":"TS-42 wire the panel","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"{{headRef}}"},"created_at":"2026-08-01T09:00:00Z","updated_at":"2026-08-11T10:00:00Z","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
+
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", PullWithHead("TS-42-fix")));
+
+        await Sync(new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", PullWithHead("TS-42-renamed")));
+
+        await using var db = NewContext();
+        var pull = await db.GitHubPullRequests.SingleAsync();
+
+        Assert.Equal("TS-42-renamed", pull.HeadBranch);
+    }
 }

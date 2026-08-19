@@ -16,15 +16,18 @@ public class GitHubController : ApiBaseController
     private readonly IGitHubConnectionService _connectionService;
     private readonly IGitHubConnectionReadService _readService;
     private readonly IGitHubProjectLinkService _linkService;
+    private readonly IGitHubActivitySyncService _activitySyncService;
 
     public GitHubController(
         IGitHubConnectionService connectionService,
         IGitHubConnectionReadService readService,
-        IGitHubProjectLinkService linkService)
+        IGitHubProjectLinkService linkService,
+        IGitHubActivitySyncService activitySyncService)
     {
         _connectionService = connectionService;
         _readService = readService;
         _linkService = linkService;
+        _activitySyncService = activitySyncService;
     }
 
     /// <summary>
@@ -108,6 +111,20 @@ public class GitHubController : ApiBaseController
     public async Task<IActionResult> GetCompanyLinks(CancellationToken ct)
     {
         var result = await _linkService.GetCompanyLinksAsync(CompanyId, ct);
+        return FromResult(result);
+    }
+
+    /// <summary>
+    /// Pulls activity for every linked repository. Inherits the controller's Company-only
+    /// gate: this spends installation rate limit and is company-wide, so it is not widened the
+    /// way GetProjectRepositories is. A repository that fails does not abort the run — the
+    /// response is 200 with the failures listed.
+    /// </summary>
+    [Audit("Synced GitHub activity")]
+    [HttpPost("activity/sync")]
+    public async Task<IActionResult> SyncActivity(CancellationToken ct)
+    {
+        var result = await _activitySyncService.SyncCompanyAsync(CompanyId, ct);
         return FromResult(result);
     }
 }

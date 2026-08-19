@@ -59,6 +59,12 @@ public class GitHubDependencyInjectionTests
         // Registered by Task 9 and absent from ApplicationServices.cs before it — the token
         // cache does not work without this line.
         Assert.NotNull(sp.GetRequiredService<IMemoryCache>());
+
+        // Sub-project C's three. Built across Tasks 4–9 but registered only in Task 10, so
+        // every one of them was a 500 at runtime until this line existed.
+        Assert.NotNull(sp.GetRequiredService<IGitHubTaskLinkResolver>());
+        Assert.NotNull(sp.GetRequiredService<IGitHubActivitySyncService>());
+        Assert.NotNull(sp.GetRequiredService<IGitHubTaskActivityService>());
     }
 
     [Fact]
@@ -85,6 +91,20 @@ public class GitHubDependencyInjectionTests
         using var scope = provider.CreateScope();
 
         var controller = ActivatorUtilities.CreateInstance<TaskSphere.Controllers.GitHubController>(
+            scope.ServiceProvider);
+
+        Assert.NotNull(controller);
+    }
+
+    [Fact]
+    public void TheTasksControllerCanBeConstructedFromTheContainer()
+    {
+        // Task 10 put a GitHub service in a constructor outside the GitHub feature for the
+        // first time, so the same trap now applies to this controller.
+        using var provider = BuildProvider();
+        using var scope = provider.CreateScope();
+
+        var controller = ActivatorUtilities.CreateInstance<TaskSphere.Controllers.TasksController>(
             scope.ServiceProvider);
 
         Assert.NotNull(controller);

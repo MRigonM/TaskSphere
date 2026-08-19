@@ -97,6 +97,9 @@ public static class ApplicationServices
         services.AddScoped<IGitHubRepositorySyncService, GitHubRepositorySyncService>();
         services.AddScoped<IGitHubConnectionReadService, GitHubConnectionReadService>();
         services.AddScoped<IGitHubProjectLinkService, GitHubProjectLinkService>();
+        services.AddScoped<IGitHubTaskLinkResolver, GitHubTaskLinkResolver>();
+        services.AddScoped<IGitHubActivitySyncService, GitHubActivitySyncService>();
+        services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
 
         services.AddHttpClient<IGitHubTokenService, GitHubTokenService>(ConfigureGitHubApiClient);
         services.AddHttpClient<IGitHubApiClient, GitHubApiClient>(ConfigureGitHubApiClient);

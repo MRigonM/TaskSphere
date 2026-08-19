@@ -13,10 +13,12 @@ namespace TaskSphere.Controllers;
 public class TasksController : ApiBaseController
 {
     private readonly ITaskService _taskService;
+    private readonly IGitHubTaskActivityService _gitHubActivityService;
 
-    public TasksController(ITaskService taskService)
+    public TasksController(ITaskService taskService, IGitHubTaskActivityService gitHubActivityService)
     {
         _taskService = taskService;
+        _gitHubActivityService = gitHubActivityService;
     }
 
     [HttpGet("{taskId:int}")]
@@ -51,6 +53,19 @@ public class TasksController : ApiBaseController
     public async Task<IActionResult> GetBySprint(int sprintId, CancellationToken ct)
     {
         var result = await _taskService.GetBySprintAsync(sprintId, CompanyId, UserId, IsCompanyAdmin, ct);
+        return FromResult(result);
+    }
+
+    /// <summary>
+    /// A task's GitHub activity. Inherits the controller's CompanyOrUser gate — membership is
+    /// enforced in the service, so a non-member gets the "Auth.Forbidden" code rather than a
+    /// bare framework 403, and cannot tell a missing task from a forbidden one.
+    /// Not audited: reads are not audited on this controller.
+    /// </summary>
+    [HttpGet("{taskId:int}/github-activity")]
+    public async Task<IActionResult> GetGitHubActivity(int taskId, CancellationToken ct)
+    {
+        var result = await _gitHubActivityService.GetForTaskAsync(CompanyId, UserId, IsCompanyAdmin, taskId, ct);
         return FromResult(result);
     }
 

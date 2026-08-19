@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.GitHub;
+using TaskSphere.Domain.Enums;
 using TaskSphere.Domain.Interfaces;
 
 // The entities, not the namespace: TaskSphere.Domain.Entities.Task shadows Task otherwise.
@@ -66,6 +67,7 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         var synced = 0;
         var branchCount = 0;
         var commitCount = 0;
+        var pullCount = 0;
         var since = DateTime.UtcNow.AddDays(-SyncWindowDays);
 
         foreach (var repository in repositories)
@@ -80,16 +82,26 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
             branchCount += branchResult.Value!.Count;
 
-            var commitResult = await SyncCommitsAsync(
+            // A branch that fails is one line in the summary, not the end of the repository:
+            // the commits pass reports per branch, so the other branches' commits are still
+            // counted and the repository still counts as synced.
+            var (inserted, commitFailures) = await SyncCommitsAsync(
                 installation, repository.Id, repository.FullName, branchResult.Value!, since, cancellationToken);
 
-            if (!commitResult.IsSuccess)
-            {
-                failures.Add(new SyncFailureDto(repository.FullName, commitResult.Errors[0].Description));
-                continue;
-            }
+            failures.AddRange(commitFailures);
+            commitCount += inserted;
 
-            commitCount += commitResult.Value;
+            // One listing per repository, so this failure is repository-scoped and carries no
+            // branch. It still does not un-sync the repository: its branches and the commits
+            // that did come back are already recorded.
+            var pullResult = await SyncPullRequestsAsync(
+                installation, repository.Id, repository.FullName, since, cancellationToken);
+
+            if (!pullResult.IsSuccess)
+                failures.Add(new SyncFailureDto(repository.FullName, pullResult.Errors[0].Description));
+            else
+                pullCount += pullResult.Value;
+
             synced++;
         }
 
@@ -105,13 +117,12 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         }
 
         // Named, because six positional members of which four are ints is a transposition
-        // waiting to happen — and it says out loud that the zero is an unimplemented
-        // pass rather than a count that came back empty.
+        // waiting to happen.
         return Result<SyncActivityResultDto>.Success(new SyncActivityResultDto(
             RepositoriesSynced: synced,
             Commits: commitCount,
             Branches: branchCount,
-            PullRequests: 0,
+            PullRequests: pullCount,
             LinksCreated: resolution.LinksCreated,
             Failures: failures));
     }
@@ -219,8 +230,14 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
     /// One listing per branch, filtered by <c>since</c>. A commit reachable from two branches
     /// comes back twice and collapses on the natural key, which is why the upsert is keyed on
     /// (repository, sha) rather than on the branch it arrived through.
+    /// <para>
+    /// Failures are collected per branch rather than returned: one listing that does not come
+    /// back says nothing about the other thirty-nine, and the rows already added for them are
+    /// flushed by the caller either way. Returning a <c>Result</c> here made the summary
+    /// under-report work that had in fact been persisted.
+    /// </para>
     /// </summary>
-    private async Task<Result<int>> SyncCommitsAsync(
+    private async Task<(int Inserted, List<SyncFailureDto> Failures)> SyncCommitsAsync(
         GitHubInstallation installation,
         int repositoryRowId,
         string fullName,
@@ -229,6 +246,7 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         CancellationToken cancellationToken)
     {
         var inserted = 0;
+        var failures = new List<SyncFailureDto>();
 
         foreach (var branch in branches)
         {
@@ -249,7 +267,10 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             var response = await _apiClient.GetAsync(installation.InstallationId, url, cancellationToken);
 
             if (!response.IsSuccess)
-                return Result<int>.Failure(response.Errors[0]);
+            {
+                failures.Add(new SyncFailureDto(fullName, response.Errors[0].Description, branch));
+                continue;
+            }
 
             List<CommitPayload>? payload;
 
@@ -259,11 +280,15 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             }
             catch (JsonException)
             {
-                return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned an unreadable commits response for {fullName}."));
+                failures.Add(new SyncFailureDto(fullName, $"GitHub returned an unreadable commits response for {fullName}.", branch));
+                continue;
             }
 
             if (payload is null)
-                return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no commits list for {fullName}."));
+            {
+                failures.Add(new SyncFailureDto(fullName, $"GitHub returned no commits list for {fullName}.", branch));
+                continue;
+            }
 
             foreach (var commit in payload)
             {
@@ -307,8 +332,122 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             }
         }
 
-        return Result<int>.Success(inserted);
+        return (inserted, failures);
     }
+
+    /// <summary>
+    /// One call, all states, newest-updated first — so the scan can stop at the first pull
+    /// request updated outside the window instead of walking the repository's whole history.
+    /// </summary>
+    private async Task<Result<int>> SyncPullRequestsAsync(
+        GitHubInstallation installation,
+        int repositoryRowId,
+        string fullName,
+        DateTime since,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{fullName}/pulls" +
+                  "?state=all&sort=updated&direction=desc&per_page=100";
+
+        var response = await _apiClient.GetAsync(installation.InstallationId, url, cancellationToken);
+
+        if (!response.IsSuccess)
+            return Result<int>.Failure(response.Errors[0]);
+
+        List<PullRequestPayload>? payload;
+
+        try
+        {
+            payload = JsonSerializer.Deserialize<List<PullRequestPayload>>(response.Value!.Body);
+        }
+        catch (JsonException)
+        {
+            return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned an unreadable pull requests response for {fullName}."));
+        }
+
+        if (payload is null)
+            return Result<int>.Failure(new Error("GitHub.SyncFailed", $"GitHub returned no pull requests list for {fullName}."));
+
+        var touched = 0;
+
+        foreach (var pull in payload)
+        {
+            var updatedAt = pull.UpdatedAt ?? DateTime.UtcNow;
+
+            if (updatedAt < since)
+                break;
+
+            var existing = await _unitOfWork.GitHubPullRequests
+                .GetByNumberIncludingDeletedAsync(repositoryRowId, pull.Number, cancellationToken);
+
+            // Merged is derived, not reported: GitHub sends state "closed" with a merged_at
+            // timestamp, so branching on state alone calls every merged PR closed.
+            var state = pull.MergedAt is not null
+                ? PullRequestState.Merged
+                : string.Equals(pull.State, "closed", StringComparison.OrdinalIgnoreCase)
+                    ? PullRequestState.Closed
+                    : PullRequestState.Open;
+
+            if (existing is null)
+            {
+                await _unitOfWork.GitHubPullRequests.AddAsync(new TaskSphere.Domain.Entities.GitHubPullRequest
+                {
+                    GitHubRepositoryId = repositoryRowId,
+                    CompanyId = installation.CompanyId,
+                    Number = pull.Number,
+                    Title = pull.Title ?? "",
+                    Body = pull.Body,
+                    State = state,
+                    AuthorLogin = pull.User?.Login ?? "",
+                    HeadBranch = pull.Head?.Ref ?? "",
+                    OpenedAtUtc = pull.CreatedAt ?? updatedAt,
+                    GitHubUpdatedAtUtc = updatedAt,
+                    MergedAtUtc = pull.MergedAt,
+                    HtmlUrl = pull.HtmlUrl ?? "",
+                }, cancellationToken);
+            }
+            else
+            {
+                // A pull request is a state machine: everything mutable is overwritten.
+                existing.CompanyId = installation.CompanyId;
+                existing.Title = pull.Title ?? "";
+                existing.Body = pull.Body;
+                existing.State = state;
+                existing.AuthorLogin = pull.User?.Login ?? "";
+                existing.HeadBranch = pull.Head?.Ref ?? "";
+                existing.GitHubUpdatedAtUtc = updatedAt;
+                existing.MergedAtUtc = pull.MergedAt;
+                existing.HtmlUrl = pull.HtmlUrl ?? "";
+                existing.IsDeleted = false;
+                existing.DeletedAt = null;
+
+                await _unitOfWork.GitHubPullRequests.Update(existing, cancellationToken);
+            }
+
+            touched++;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result<int>.Success(touched);
+    }
+
+    private sealed record PullRequestPayload(
+        [property: JsonPropertyName("number")] int Number,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("body")] string? Body,
+        [property: JsonPropertyName("state")] string? State,
+        [property: JsonPropertyName("user")] PullRequestUserPayload? User,
+        [property: JsonPropertyName("head")] PullRequestHeadPayload? Head,
+        [property: JsonPropertyName("created_at")] DateTime? CreatedAt,
+        [property: JsonPropertyName("updated_at")] DateTime? UpdatedAt,
+        [property: JsonPropertyName("merged_at")] DateTime? MergedAt,
+        [property: JsonPropertyName("html_url")] string? HtmlUrl);
+
+    private sealed record PullRequestUserPayload(
+        [property: JsonPropertyName("login")] string? Login);
+
+    private sealed record PullRequestHeadPayload(
+        [property: JsonPropertyName("ref")] string? Ref);
 
     private sealed record BranchPayload(
         [property: JsonPropertyName("name")] string? Name,

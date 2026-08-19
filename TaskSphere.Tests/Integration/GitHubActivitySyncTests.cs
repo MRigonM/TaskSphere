@@ -175,6 +175,21 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             "\"author\":{\"name\":\"Rigon\",\"date\":\"2026-08-11T10:00:00Z\"}}," +
             "\"author\":" + (c.Login is null ? "null" : "{\"login\":\"" + c.Login + "\"}") + "}")) + "]";
 
+    private static string Pulls(params (int Number, string Title, string? Body, string State, string? MergedAt, string UpdatedAt)[] pulls)
+        => "[" + string.Join(",", pulls.Select(p =>
+            $$"""
+            {"number":{{p.Number}},
+             "title":{{JsonEncode(p.Title)}},
+             "body":{{(p.Body is null ? "null" : JsonEncode(p.Body))}},
+             "state":"{{p.State}}",
+             "user":{"login":"MRigonM"},
+             "head":{"ref":"TS-42-fix"},
+             "created_at":"2026-08-01T09:00:00Z",
+             "updated_at":"{{p.UpdatedAt}}",
+             "merged_at":{{(p.MergedAt is null ? "null" : $"\"{p.MergedAt}\"")}},
+             "html_url":"https://github.com/rigon-org/api/pull/{{p.Number}}"}
+            """)) + "]";
+
     private static string JsonEncode(string value) => System.Text.Json.JsonSerializer.Serialize(value);
 
     private async SystemTask.Task<Result<SyncActivityResultDto>> Sync(FakeApiClient api)
@@ -490,7 +505,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     }
 
     [Fact]
-    public async SystemTask.Task AFailingCommitsCall_FailsThatRepository_RatherThanReportingItSynced()
+    public async SystemTask.Task AFailingCommitsCall_IsReportedAgainstItsBranch_NotSilently()
     {
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
@@ -500,40 +515,47 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         Assert.True(result.IsSuccess);
 
-        // Swallowing this would report a repository as synced having mirrored no commits, and
-        // stamp the installation as looked-at on the strength of it.
-        Assert.Equal(0, result.Value!.RepositoriesSynced);
+        // Reversed on 2026-08-19: the unit of partial success is the branch. This repository's
+        // sole branch failed its commits listing, but the branch itself WAS mirrored, so the
+        // repository counts as synced and the installation is honestly stamped as looked-at.
+        // What must never happen is the failure going unreported — that is the assertion below.
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
 
         var failure = Assert.Single(result.Value.Failures);
         Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Equal("main", failure.Branch);
         Assert.Equal("Rate limit exceeded.", failure.Reason);
 
         await using var db = NewContext();
-        Assert.Null((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
+        Assert.NotNull((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
     }
 
     [Fact]
-    public async SystemTask.Task AnUnreadableCommitsResponse_FailsThatRepository_NotSilently()
+    public async SystemTask.Task AnUnreadableCommitsResponse_IsReportedAgainstItsBranch_NotSilently()
     {
         var result = await Sync(new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
             .On("/commits", "{ not json"));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(0, result.Value!.RepositoriesSynced);
-        Assert.Contains("unreadable", Assert.Single(result.Value.Failures).Reason, StringComparison.Ordinal);
+
+        var failure = Assert.Single(result.Value!.Failures);
+        Assert.Equal("main", failure.Branch);
+        Assert.Contains("unreadable", failure.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async SystemTask.Task ACommitsBodyOfNull_FailsThatRepository_NotSilently()
+    public async SystemTask.Task ACommitsBodyOfNull_IsReportedAgainstItsBranch_NotSilently()
     {
         var result = await Sync(new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
             .On("/commits", "null"));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(0, result.Value!.RepositoriesSynced);
-        Assert.Contains("no commits list", Assert.Single(result.Value.Failures).Reason, StringComparison.Ordinal);
+
+        var failure = Assert.Single(result.Value!.Failures);
+        Assert.Equal("main", failure.Branch);
+        Assert.Contains("no commits list", failure.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1016,6 +1038,62 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async SystemTask.Task OneFailingBranch_KeepsTheCommitsTheOtherBranchesReturned()
+    {
+        // The unit of partial success is the branch, not the repository. The database already
+        // behaved this way -- adds are tracked and flushed once at the end, so the commits from
+        // the branches before the failure were persisted regardless -- while the count handed
+        // back said zero. The mirror and the summary have to agree.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("feature", "bbb")))
+            .On("/commits?sha=main", Commits(("c1", "TS-42 one", "rigon"), ("c2", "TS-42 two", "rigon")))
+            .Fail("/commits?sha=feature", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Commits);
+
+        await using var db = NewContext();
+        Assert.Equal(2, await db.GitHubCommits.CountAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingBranch_IsReportedWithItsName()
+    {
+        // "rigon-org/api failed" is not actionable when a repository has forty branches and one
+        // of them is the problem. The failure has to say which listing did not come back.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("feature", "bbb")))
+            .Fail("/commits?sha=feature", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        var result = await Sync(api);
+
+        var failure = Assert.Single(result.Value!.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Equal("feature", failure.Branch);
+        Assert.Equal("Rate limit exceeded.", failure.Reason);
+    }
+
+    [Fact]
+    public async SystemTask.Task ARepositoryWithOneFailingBranch_StillCountsAsSynced()
+    {
+        // It gave us data, so the timestamp is honest. Counting it as unsynced left
+        // ActivitySyncedAtUtc stale on a run that had in fact written rows -- the panel would
+        // say it had never looked.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("feature", "bbb")))
+            .Fail("/commits?sha=feature", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        var result = await Sync(api);
+
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+
+        await using var db = NewContext();
+        Assert.NotNull((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
+    }
+
+    [Fact]
     public async SystemTask.Task RepositoriesAreTakenInFullNameOrder()
     {
         // Inserted last, so its row id is the highest and storage order and name order
@@ -1064,5 +1142,187 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             .ToArray();
 
         Assert.Equal(new[] { "rigon-org/admin", "rigon-org/api", "rigon-org/web" }, branchCallOrder);
+    }
+
+    // ---- pull requests (Task 8) ---------------------------------------------------------
+
+    [Fact]
+    public async SystemTask.Task PullRequests_AreFetchedOnce_ForAllStates_NewestFirst()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        await Sync(api);
+
+        var call = Assert.Single(api.RequestedUrls.Where(u => u.Contains("/pulls?", StringComparison.Ordinal)));
+
+        Assert.Contains("state=all", call, StringComparison.Ordinal);
+        Assert.Contains("sort=updated", call, StringComparison.Ordinal);
+        Assert.Contains("direction=desc", call, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task PullRequestState_IsDerived_MergedBeatsClosed()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls(
+                (17, "TS-42 open one", null, "open", null, "2026-08-11T10:00:00Z"),
+                (18, "TS-42 closed one", null, "closed", null, "2026-08-11T10:00:00Z"),
+                // GitHub reports a merged PR as state "closed" with a merged_at timestamp.
+                // Reading state alone would call every merged PR closed.
+                (19, "TS-42 merged one", null, "closed", "2026-08-10T12:00:00Z", "2026-08-11T10:00:00Z")));
+
+        var result = await Sync(api);
+
+        Assert.Equal(3, result.Value!.PullRequests);
+
+        await using var db = NewContext();
+        var pulls = await db.GitHubPullRequests.OrderBy(p => p.Number).ToListAsync();
+
+        Assert.Equal(PullRequestState.Open, pulls[0].State);
+        Assert.Equal(PullRequestState.Closed, pulls[1].State);
+        Assert.Equal(PullRequestState.Merged, pulls[2].State);
+        Assert.Equal(new DateTime(2026, 8, 10, 12, 0, 0), pulls[2].MergedAtUtc);
+        Assert.Null(pulls[0].MergedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task PullRequestsUpdatedOutsideTheWindow_AreNotIngested()
+    {
+        // The listing is sorted by updated_at descending, so the first stale one ends the scan.
+        var stale = DateTime.UtcNow.AddDays(-60).ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var fresh = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls(
+                (17, "TS-42 fresh", null, "open", null, fresh),
+                (18, "TS-42 stale", null, "closed", null, stale)));
+
+        var result = await Sync(api);
+
+        Assert.Equal(1, result.Value!.PullRequests);
+
+        await using var db = NewContext();
+        var pull = await db.GitHubPullRequests.SingleAsync();
+
+        Assert.Equal(17, pull.Number);
+    }
+
+    [Fact]
+    public async SystemTask.Task ReSyncingAPullRequest_UpdatesItInPlace_AsAStateMachine()
+    {
+        var open = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        var merged = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", "2026-08-12T08:00:00Z", "2026-08-12T08:00:00Z")));
+
+        await Sync(open);
+        await Sync(merged);
+
+        await using var db = NewContext();
+
+        Assert.Equal(1, await db.GitHubPullRequests.IgnoreQueryFilters().CountAsync());
+
+        var pull = await db.GitHubPullRequests.SingleAsync();
+        Assert.Equal(PullRequestState.Merged, pull.State);
+        Assert.NotNull(pull.MergedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestTitleNamingATask_LinksThroughTheResolver()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", "Closes it.", "open", null, "2026-08-11T10:00:00Z")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts42TaskId, link.TaskId);
+        Assert.NotNull(link.GitHubPullRequestId);
+    }
+
+    [Fact]
+    public async SystemTask.Task OneRepositoryFailing_DoesNotAbortTheOthers_AndAppearsInFailures()
+    {
+        // Link the second repository so both are in scope, then fail only the first.
+        await using (var db = NewContext())
+        {
+            var project = await db.Projects.SingleAsync();
+
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = project.Id,
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        var api = new FakeApiClient()
+            .Fail("rigon-org/api", new Error("GitHub.RequestFailed", "GitHub returned 404 for rigon-org/api."))
+            .On("/repos/rigon-org/web/branches", Branches(("main", "aaa")));
+
+        var result = await Sync(api);
+
+        // Partial success is a result, not an error.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+
+        var failure = Assert.Single(result.Value.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+        Assert.Contains("404", failure.Reason, StringComparison.Ordinal);
+
+        await using (var db = NewContext())
+            Assert.Single(await db.GitHubBranches.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task ARateLimitedRun_SurfacesTheClientsErrorVerbatim()
+    {
+        var api = new FakeApiClient()
+            .Fail("rigon-org/api", new Error("GitHub.RateLimited", "GitHub rate limit hit. Retry after 60s."));
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("Retry after 60s", Assert.Single(result.Value!.Failures).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async SystemTask.Task ASuccessfulRun_StampsActivitySyncedAtUtc()
+    {
+        await Sync(new FakeApiClient().On("/branches", Branches(("main", "aaa"))));
+
+        await using var db = NewContext();
+        var installation = await db.GitHubInstallations.SingleAsync();
+
+        Assert.NotNull(installation.ActivitySyncedAtUtc);
+        Assert.InRange(DateTime.UtcNow - installation.ActivitySyncedAtUtc!.Value, TimeSpan.Zero, TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async SystemTask.Task ARunInWhichEveryRepositoryFailed_LeavesActivitySyncedAtUtcUntouched()
+    {
+        // Otherwise the panel would claim it had looked when it had not.
+        var api = new FakeApiClient()
+            .Fail("rigon-org/api", new Error("GitHub.RequestFailed", "GitHub returned 500."));
+
+        var result = await Sync(api);
+
+        Assert.Equal(0, result.Value!.RepositoriesSynced);
+
+        await using var db = NewContext();
+        Assert.Null((await db.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
     }
 }

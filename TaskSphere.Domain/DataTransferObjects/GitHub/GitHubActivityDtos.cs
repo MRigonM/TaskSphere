@@ -7,7 +7,7 @@ namespace TaskSphere.Domain.DataTransferObjects.GitHub;
 /// repository that fails does not abort the run, and the endpoint still answers 200 with the
 /// summary.
 /// </summary>
-public record SyncFailureDto(string RepositoryFullName, string Reason);
+public record SyncFailureDto(string RepositoryFullName, string Reason, string? Branch = null);
 
 public record SyncActivityResultDto(
     int RepositoriesSynced,

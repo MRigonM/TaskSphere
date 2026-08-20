@@ -124,6 +124,10 @@ describe('TaskDetailsModalComponent tabs', () => {
     tab(fixture, 'details').click();
     fixture.detectChanges();
 
+    // The tab actually went back — asserting only the form value lets a Details button that
+    // sets 'activity' pass, since the value never depended on the tab.
+    expect(fixture.componentInstance.activeTab()).toBe('details');
+    expect(fixture.nativeElement.querySelector('form')!.hasAttribute('hidden')).toBe(false);
     expect(fixture.componentInstance.form.value.title).toBe('Edited but not saved');
   });
 

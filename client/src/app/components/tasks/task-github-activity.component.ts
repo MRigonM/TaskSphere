@@ -55,7 +55,13 @@ export class TaskGitHubActivityComponent implements OnChanges {
   isEmpty = computed(() => this.data() !== null && this.count() === 0);
 
   ngOnChanges(changes: SimpleChanges) {
-    if (changes['taskId']?.currentValue) this.load();
+    if (!changes['taskId']?.currentValue) return;
+
+    // Back to unknown before reading a different task. `load()` deliberately leaves `data`
+    // alone when a read fails, which is right for a retry of the same task and wrong across
+    // a task change — without this, task 42's commits stay on screen under an error about 43.
+    this.data.set(null);
+    this.load();
   }
 
   retry() {

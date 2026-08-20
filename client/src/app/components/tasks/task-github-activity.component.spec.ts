@@ -27,7 +27,10 @@ const full: TaskGitHubActivityDto = {
   pullRequests: [
     {
       number: 17,
-      title: 'TS-42 wire the panel',
+      // Deliberately NOT the commit's subject line. When the two matched, "renders commits,
+      // branches and pull requests" was satisfied by the pull request alone, and a mutant that
+      // rendered the wrong line of the commit message survived.
+      title: 'TS-42 add the endpoint',
       state: PullRequestState.Merged,
       authorLogin: 'MRigonM',
       openedAtUtc: '2026-08-10T09:00:00Z',
@@ -123,7 +126,64 @@ describe('TaskGitHubActivityComponent', () => {
   it('renders only the first line of a commit message', async () => {
     const { fixture } = await setup();
 
+    // Both halves matter: the body is dropped AND the subject survives. Asserting only the
+    // absence lets `split('\n')[1]` — which renders the blank second line — pass.
+    expect(text(fixture)).toContain('TS-42 wire the panel');
     expect(text(fixture)).not.toContain('nobody needs on one line');
+  });
+
+  it('labels a pull request by its state', async () => {
+    const { fixture } = await setup({
+      payload: {
+        ...empty,
+        pullRequests: [
+          { ...full.pullRequests[0], number: 1, state: PullRequestState.Open },
+          { ...full.pullRequests[0], number: 2, state: PullRequestState.Closed },
+          { ...full.pullRequests[0], number: 3, state: PullRequestState.Merged },
+        ],
+      },
+    });
+
+    // Per row, not across the panel: asserting the three words appear somewhere passes under
+    // every permutation of the mapping, including one that labels a merged PR "Open".
+    expect(host(fixture).querySelector('[data-pr="1"]')!.textContent).toContain('Open');
+    expect(host(fixture).querySelector('[data-pr="2"]')!.textContent).toContain('Closed');
+    expect(host(fixture).querySelector('[data-pr="3"]')!.textContent).toContain('Merged');
+  });
+
+  it('renders no section headings and no sync date for an empty payload', async () => {
+    // An empty payload must not leave three empty sections behind, and must not claim a last
+    // sync that never happened — `lastSyncedAtUtc` is null until one has run.
+    const { fixture } = await setup({ payload: empty });
+
+    expect(text(fixture)).not.toContain('Pull requests');
+    expect(text(fixture)).not.toContain('Branches');
+    expect(text(fixture)).not.toContain('Commits');
+    expect(text(fixture)).not.toContain('Last synced');
+  });
+
+  it('stops saying it is loading once the read has failed', async () => {
+    const { fixture } = await setup({ fail: true });
+
+    expect(text(fixture)).not.toContain('Loading activity');
+  });
+
+  it('does not read anything when there is no task to read', async () => {
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'User', companyId: 1, userId: 'u1' })
+    );
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+
+    const fixture = TestBed.createComponent(TaskGitHubActivityComponent);
+    fixture.componentRef.setInput('taskId', undefined);
+    fixture.detectChanges();
+
+    // Without the `currentValue` guard this fires GET Tasks/undefined/github-activity, and
+    // verify() in afterEach is what catches it.
+    expect(fixture.componentInstance.data()).toBeNull();
   });
 
   it('marks a branch GitHub no longer reports rather than dropping it', async () => {
@@ -292,6 +352,115 @@ describe('TaskGitHubActivityComponent', () => {
 
     expect(text(fixture)).toContain('This company is not connected to GitHub.');
     // verify() in afterEach fails if a re-read went out.
+  });
+
+  it('disables the sync button while a sync is in flight', async () => {
+    // The call spends company-wide installation rate limit. A second click before the first
+    // answers spends it twice.
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    const button = host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!;
+    button.click();
+    fixture.detectChanges();
+
+    expect(button.disabled).toBe(true);
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      failures: [],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.disabled).toBe(false);
+  });
+
+  it('names the branch when a failure is branch-scoped, and only then', async () => {
+    // Partial success is branch-level since 2026-08-19: a repository can be fully synced except
+    // for one branch's commits, and the panel has the branch name either way.
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 2,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      failures: [
+        { repositoryFullName: 'rigon-org/api', reason: 'Commits listing failed.', branch: 'TS-42-fix' },
+        { repositoryFullName: 'rigon-org/web', reason: 'GitHub returned 404.', branch: null },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('@TS-42-fix');
+    expect(text(fixture)).not.toContain('rigon-org/web@');
+  });
+
+  it('drops the previous task activity when a new task fails to load', async () => {
+    // Otherwise task 42's commits stay on screen under an error about task 43 — one task's
+    // history attributed to another.
+    const { fixture, http } = await setup();
+
+    expect(text(fixture)).toContain('TS-42-fix');
+
+    fixture.componentRef.setInput('taskId', 43);
+    fixture.detectChanges();
+
+    http
+      .expectOne(`${environment.apiUrl}Tasks/43/github-activity`)
+      .flush(apiError('The activity could not be read.'), { status: 500, statusText: 'Server Error' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('The activity could not be read.');
+    expect(text(fixture)).not.toContain('TS-42-fix');
+    expect(text(fixture)).not.toContain('1234567');
+  });
+
+  it('keeps the task activity on screen when a refresh of the same task fails', async () => {
+    // The other half of the task-change rule: for the SAME task, a failed re-read means "could
+    // not refresh", not "there is nothing". The last known activity stays under the error.
+    const { fixture, http } = await setup({ role: 'Company' });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      failures: [],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http
+      .expectOne(`${environment.apiUrl}Tasks/42/github-activity`)
+      .flush(apiError('The activity could not be read.'), { status: 500, statusText: 'Server Error' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('The activity could not be read.');
+    expect(text(fixture)).toContain('TS-42-fix');
   });
 
   it('clears the previous run failures when a later sync fails', async () => {

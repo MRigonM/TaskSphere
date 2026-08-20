@@ -1,0 +1,74 @@
+<div class="space-y-4 text-sm">
+  <div *ngIf="error()" class="rounded-lg bg-red-500/10 text-red-200 px-3 py-2">
+    <div>{{ error() }}</div>
+    <button
+      data-retry
+      type="button"
+      class="mt-2 rounded-lg border border-white/10 px-3 py-1 text-xs hover:bg-white/10"
+      (click)="retry()"
+    >
+      Retry
+    </button>
+  </div>
+
+  <div *ngIf="loading() && !data()" class="text-slate-400">Loading activity…</div>
+
+  <div *ngIf="isEmpty() && !error()" class="text-slate-400">
+    No GitHub activity for this task yet.
+  </div>
+
+  <ng-container *ngIf="data() as activity">
+    <section *ngIf="activity.pullRequests.length" class="space-y-2">
+      <h3 class="text-xs uppercase tracking-wide text-slate-400">Pull requests</h3>
+      <ul class="space-y-1">
+        <li *ngFor="let pr of activity.pullRequests" class="flex items-center gap-2">
+          <span class="rounded-full bg-white/10 px-2 py-0.5 text-xs">{{ stateLabel(pr.state) }}</span>
+          <a
+            [href]="pr.htmlUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="text-indigo-300 hover:text-indigo-200"
+          >#{{ pr.number }} {{ pr.title }}</a>
+          <span class="text-xs text-slate-500">{{ pr.repositoryFullName }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <section *ngIf="activity.branches.length" class="space-y-2">
+      <h3 class="text-xs uppercase tracking-wide text-slate-400">Branches</h3>
+      <ul class="space-y-1">
+        <li
+          *ngFor="let branch of activity.branches"
+          [attr.data-branch]="branch.name"
+          class="flex items-center gap-2"
+        >
+          <span class="font-mono text-xs">{{ branch.name }}</span>
+          <span *ngIf="branch.isDeleted" class="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">
+            deleted
+          </span>
+          <span class="text-xs text-slate-500">{{ branch.repositoryFullName }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <section *ngIf="activity.commits.length" class="space-y-2">
+      <h3 class="text-xs uppercase tracking-wide text-slate-400">Commits</h3>
+      <ul class="space-y-1">
+        <li *ngFor="let commit of activity.commits" class="flex items-center gap-2">
+          <a
+            [href]="commit.htmlUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="font-mono text-xs text-indigo-300 hover:text-indigo-200"
+          >{{ commit.shortSha }}</a>
+          <span>{{ subject(commit.message) }}</span>
+          <span class="text-xs text-slate-500">{{ commit.authorLogin ?? commit.authorName }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <p *ngIf="activity.lastSyncedAtUtc" class="text-xs text-slate-500">
+      Last synced {{ activity.lastSyncedAtUtc | date: 'medium' }}
+    </p>
+  </ng-container>
+</div>

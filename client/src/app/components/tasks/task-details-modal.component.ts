@@ -5,11 +5,12 @@ import { UserDto } from '../../core/models/account.models';
 import { TasksApiService } from '../../core/services/tasks-api.service';
 import {UpdateTaskDto} from '../../core/models/tasks.models';
 import { ToastService } from '../../core/services/toast.service';
+import { TaskGitHubActivityComponent } from './task-github-activity.component';
 
 @Component({
   selector: 'app-task-details-modal',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, TaskGitHubActivityComponent],
   templateUrl: './task-details-modal.component.html'
 })
 export class TaskDetailsModalComponent {
@@ -25,6 +26,10 @@ export class TaskDetailsModalComponent {
 
   loading = signal(false);
   error = signal<string | null>(null);
+
+  /** The modal gains nothing but the tab strip — it still owns the form, the save and its
+   * own error path. It is already carrying enough. */
+  activeTab = signal<'details' | 'activity'>('details');
 
   constructor(
     private fb: FormBuilder,
@@ -58,6 +63,7 @@ export class TaskDetailsModalComponent {
 
       this.error.set(null);
       this.loading.set(false);
+      this.activeTab.set('details');
     }
   }
 

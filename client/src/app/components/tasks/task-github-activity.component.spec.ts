@@ -51,6 +51,11 @@ function apiError(description: string) {
   return [{ code: 'GitHub.Failed', description }];
 }
 
+/** `nativeElement` is `any`, so a generic `querySelector` on it is TS2347. Type it once, here. */
+function host(fixture: { nativeElement: HTMLElement }): HTMLElement {
+  return fixture.nativeElement;
+}
+
 /** Mounts and renders once, leaving the first read in flight for the caller to answer. */
 function mount(options: { role?: string } = {}) {
   localStorage.setItem(
@@ -171,10 +176,7 @@ describe('TaskGitHubActivityComponent', () => {
   it('retries the read from the error state', async () => {
     const { fixture, http } = await setup({ fail: true });
 
-    // `nativeElement` is `any`, so the type argument has to go through a typed reference —
-    // a generic call on an untyped function is TS2347.
-    const host: HTMLElement = fixture.nativeElement;
-    host.querySelector<HTMLButtonElement>('[data-retry]')!.click();
+    host(fixture).querySelector<HTMLButtonElement>('[data-retry]')!.click();
     fixture.detectChanges();
 
     http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(full);
@@ -202,5 +204,132 @@ describe('TaskGitHubActivityComponent', () => {
     const { fixture } = await setup();
 
     expect(text(fixture)).toContain('Last synced');
+  });
+
+  it('hides the sync button from a User-role caller', async () => {
+    const { fixture } = await setup({ role: 'User' });
+
+    expect(host(fixture).querySelector('[data-sync]')).toBeNull();
+  });
+
+  it('shows the sync button to a Company admin, and is honest that it is company-wide', async () => {
+    const { fixture } = await setup({ role: 'Company' });
+
+    const button = host(fixture).querySelector<HTMLButtonElement>('[data-sync]');
+
+    expect(button).toBeTruthy();
+    // The copy says "all repositories", not "this task": it spends installation rate limit
+    // across the whole company despite sitting inside a task modal.
+    expect(button!.textContent).toContain('all repositories');
+  });
+
+  it('re-reads the task activity after a successful sync', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 1,
+      branches: 1,
+      pullRequests: 1,
+      linksCreated: 1,
+      failures: [],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(full);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('TS-42-fix');
+  });
+
+  it('reports a partial failure without treating the run as failed', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      failures: [{ repositoryFullName: 'rigon-org/api', reason: 'GitHub returned 404.' }],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('rigon-org/api');
+    expect(text(fixture)).toContain('GitHub returned 404.');
+  });
+
+  it('surfaces a failed sync as an error and does not re-read', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http
+      .expectOne(`${environment.apiUrl}GitHub/activity/sync`)
+      .flush(apiError('This company is not connected to GitHub.'), {
+        status: 400,
+        statusText: 'Bad Request',
+      });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('This company is not connected to GitHub.');
+    // verify() in afterEach fails if a re-read went out.
+  });
+
+  it('clears the previous run failures when a later sync fails', async () => {
+    // The failure list belongs to the run that produced it. A failed sync never sets it, so
+    // without the reset at the top of sync() the previous run's failures render underneath an
+    // error about the current one — stale state attributed to the wrong run.
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      failures: [{ repositoryFullName: 'rigon-org/api', reason: 'GitHub returned 404.' }],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('GitHub returned 404.');
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+    http
+      .expectOne(`${environment.apiUrl}GitHub/activity/sync`)
+      .flush(apiError('This company is not connected to GitHub.'), {
+        status: 400,
+        statusText: 'Bad Request',
+      });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture)).toContain('This company is not connected to GitHub.');
+    expect(text(fixture)).not.toContain('GitHub returned 404.');
   });
 });

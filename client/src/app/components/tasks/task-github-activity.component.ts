@@ -3,7 +3,12 @@ import { Component, computed, inject, Input, OnChanges, signal, SimpleChanges } 
 import { catchError, finalize, of, tap } from 'rxjs';
 
 import { apiErrorMessage } from '../../core/http/api-error';
-import { PullRequestState, TaskGitHubActivityDto } from '../../core/models/github-activity.models';
+import {
+  PullRequestState,
+  SyncFailureDto,
+  TaskGitHubActivityDto,
+} from '../../core/models/github-activity.models';
+import { AuthStoreService } from '../../core/services/auth-store.service';
 import { GitHubActivityService } from '../../core/services/github-activity.service';
 
 /**
@@ -26,11 +31,18 @@ export class TaskGitHubActivityComponent implements OnChanges {
   @Input({ required: true }) taskId!: number;
 
   private activityApi = inject(GitHubActivityService);
+  private auth = inject(AuthStoreService);
 
   /** null means unknown — not read yet, or the read failed. Never "nothing is linked". */
   data = signal<TaskGitHubActivityDto | null>(null);
   loading = signal(false);
   error = signal<string | null>(null);
+
+  syncing = signal(false);
+  /** Reported, not thrown: a repository that failed does not make the run a failure. */
+  syncFailures = signal<SyncFailureDto[]>([]);
+
+  isCompanyAdmin = this.auth.isCompany();
 
   readonly PullRequestState = PullRequestState;
 
@@ -65,6 +77,27 @@ export class TaskGitHubActivityComponent implements OnChanges {
           return of(null);
         }),
         finalize(() => this.loading.set(false))
+      )
+      .subscribe();
+  }
+
+  sync() {
+    this.syncing.set(true);
+    this.error.set(null);
+    this.syncFailures.set([]);
+
+    this.activityApi
+      .sync()
+      .pipe(
+        tap(result => {
+          this.syncFailures.set(result.failures);
+          this.load();
+        }),
+        catchError(err => {
+          this.error.set(apiErrorMessage(err, 'Failed to sync GitHub activity.'));
+          return of(null);
+        }),
+        finalize(() => this.syncing.set(false))
       )
       .subscribe();
   }

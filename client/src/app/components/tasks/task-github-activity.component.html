@@ -1,4 +1,31 @@
 <div class="space-y-4 text-sm">
+  <div *ngIf="isCompanyAdmin" class="flex justify-end">
+    <button
+      data-sync
+      type="button"
+      [disabled]="syncing()"
+      class="rounded-xl border border-white/10 px-3 py-1 text-xs hover:bg-white/10 disabled:opacity-50"
+      (click)="sync()"
+    >
+      {{ syncing() ? 'Syncing…' : 'Sync all repositories' }}
+    </button>
+  </div>
+
+  <!-- "Some data" rather than "some repositories", revised 2026-08-19: under branch-level
+       partial success a repository can be fully synced except for one branch's commits, and
+       the old wording read as a bigger failure than it was. The branch is rendered when the
+       failure names one — without it the panel has the information and hides it. -->
+  <div *ngIf="syncFailures().length" class="rounded-lg bg-amber-500/10 text-amber-200 px-3 py-2">
+    <div class="text-xs">Some data could not be synced:</div>
+    <ul class="mt-1 space-y-0.5">
+      <li *ngFor="let failure of syncFailures()" class="text-xs">
+        <span class="font-mono">{{ failure.repositoryFullName }}</span>
+        <span *ngIf="failure.branch" class="font-mono">@{{ failure.branch }}</span>
+        — {{ failure.reason }}
+      </li>
+    </ul>
+  </div>
+
   <div *ngIf="error()" class="rounded-lg bg-red-500/10 text-red-200 px-3 py-2">
     <div>{{ error() }}</div>
     <button

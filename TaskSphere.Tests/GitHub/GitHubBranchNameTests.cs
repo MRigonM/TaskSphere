@@ -55,4 +55,64 @@ public class GitHubBranchNameTests
         Assert.False(name.EndsWith('-'), "A capped slug must not end on a separator.");
         Assert.Contains(key, TaskKeyScanner.Scan(name));
     }
+
+    [Theory]
+    [InlineData("TS-42/crud-for-product")]
+    [InlineData("TS-42")]
+    [InlineData("feature/TS-42-crud")]
+    [InlineData("fix_TS-42")]
+    public void LegalRefNames_AreAccepted(string name)
+    {
+        Assert.True(GitHubBranchNameValidator.IsValidRefName(name));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    [InlineData("TS-42/has..dots")]
+    [InlineData("TS-42//double")]
+    [InlineData("TS-42/at@{brace")]
+    [InlineData("TS-42/trailing/")]
+    [InlineData("TS-42/trailing.")]
+    [InlineData("TS-42/thing.lock")]
+    [InlineData("/TS-42/leading")]
+    [InlineData("TS-42/.hidden")]
+    [InlineData("TS-42/has space")]
+    [InlineData("TS-42/tilde~1")]
+    [InlineData("TS-42/caret^1")]
+    [InlineData("TS-42/colon:1")]
+    [InlineData("TS-42/question?")]
+    [InlineData("TS-42/star*")]
+    [InlineData("TS-42/bracket[1]")]
+    [InlineData("TS-42/back\\slash")]
+    public void IllegalRefNames_AreRejected(string? name)
+    {
+        Assert.False(GitHubBranchNameValidator.IsValidRefName(name));
+    }
+
+    [Fact]
+    public void ANameTooLong_IsRejected()
+    {
+        Assert.False(GitHubBranchNameValidator.IsValidRefName("TS-42/" + new string('a', 200)));
+    }
+
+    [Theory]
+    [InlineData("TS-42/crud", true)]
+    [InlineData("TS-42", true)]
+    [InlineData("hotfix/TS-42-now", true)]
+    [InlineData("ts-42/crud", false)]
+    [InlineData("XTS-42/crud", false)]
+    [InlineData("TS-420/crud", false)]
+    [InlineData("TS-7/see-also-TS-42", true)]
+    public void NamesTask_RequiresThisTasksKey(string name, bool expected)
+    {
+        Assert.Equal(expected, GitHubBranchNameValidator.NamesTask(name, new TaskKey("TS", 42)));
+    }
+
+    [Fact]
+    public void AnotherTasksKeyAlone_DoesNotName_ThisTask()
+    {
+        Assert.False(GitHubBranchNameValidator.NamesTask("TS-7/other-work", new TaskKey("TS", 42)));
+    }
 }

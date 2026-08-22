@@ -261,6 +261,65 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         var link = await verify.TaskLinks.SingleAsync();
         Assert.Equal(_otherTaskId, link.TaskId);
     }
+
+    // Task 7: The refusals — wrong repository, bad name, another task's key
+
+    [Fact]
+    public async SystemTask.Task Create_WithSeveralLinks_RefusesARepositoryThisProjectDoesNotLink()
+    {
+        await using (var arrange = NewContext())
+        {
+            arrange.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                CompanyId = _companyId,
+                ProjectId = _projectId,
+                GitHubRepositoryId = _otherRepositoryId,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(999, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Auth.Forbidden", result.Errors[0].Code);
+        Assert.Empty(api.Posts);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_RefusesAnIllegalRefName()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/has..dots"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Validation.BranchName", result.Errors[0].Code);
+        Assert.Empty(api.Posts);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_RefusesANameThatDoesNotNameThisTask()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-7/other"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Validation.BranchName", result.Errors[0].Code);
+        Assert.Empty(api.Posts);
+        Assert.Empty(api.GetUrls);
+    }
 }
 
 /// <summary>

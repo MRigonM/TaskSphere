@@ -37,6 +37,7 @@ public class GitHubBranchCreateTests : IAsyncLifetime
     private int _otherProjectId;   // OTH, links _otherRepositoryId
     private int _repositoryId;
     private int _otherRepositoryId;
+    private int _unlinkedRepositoryId;  // exists in the company, linked to no project
     private int _taskId;           // TS-42 "CRUD for Product"
     private int _otherTaskId;      // OTH-42, same number, different project
 
@@ -85,6 +86,24 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         };
         db.GitHubInstallations.Add(installation);
         await db.SaveChangesAsync();
+
+        // Seeded first and linked to nothing, for two reasons. It is the repository the
+        // authorization test aims at — one that exists in this company but that the task's
+        // project does not link. And it offsets the repository identity seed, so repository ids
+        // and task ids can no longer coincide: with one of everything they were both 1 and 2,
+        // and a lookup that used a task id where a repository id belongs resolved to the right
+        // row by accident. Found by an independent mutation sweep on 2026-08-22.
+        var unlinkedRepository = new GitHubRepository
+        {
+            RepositoryId = 557,
+            GitHubInstallationId = installation.Id,
+            CompanyId = _companyId,
+            FullName = "rigon-org/secret",
+            DefaultBranch = "main",
+        };
+        db.GitHubRepositories.Add(unlinkedRepository);
+        await db.SaveChangesAsync();
+        _unlinkedRepositoryId = unlinkedRepository.Id;
 
         var repository = new GitHubRepository
         {
@@ -356,7 +375,7 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         await using var db = NewContext();
         var result = await NewService(db, api).CreateForTaskAsync(
             _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
-            new CreateBranchDto(999, "TS-42/crud"), default);
+            new CreateBranchDto(_unlinkedRepositoryId, "TS-42/crud"), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Auth.Forbidden", result.Errors[0].Code);
@@ -375,6 +394,10 @@ public class GitHubBranchCreateTests : IAsyncLifetime
 
         Assert.False(result.IsSuccess);
         Assert.Equal("Validation.BranchName", result.Errors[0].Code);
+        // The two validation branches share an error code, so only the message distinguishes
+        // them. Without this, swapping the order of the checks changes nothing observable and
+        // an illegal name gets told to add a key it already has.
+        Assert.Contains("valid git branch name", result.Errors[0].Description);
         Assert.Empty(api.Posts);
     }
 
@@ -453,7 +476,10 @@ public class GitHubBranchCreateTests : IAsyncLifetime
 
         Assert.False(result.IsSuccess);
         Assert.Equal("GitHub.DefaultBranchMissing", result.Errors[0].Code);
-        Assert.Contains("main", result.Errors[0].Description);
+        // Both halves, and in their own slots: asserting only that "main" appears somewhere
+        // passes just as well when the repository and the branch are swapped in the message.
+        Assert.Contains("no branch 'main'", result.Errors[0].Description);
+        Assert.Contains("in rigon-org/api", result.Errors[0].Description);
         Assert.Empty(api.Posts);
     }
 
@@ -541,6 +567,194 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         Assert.Single(await verify.GitHubBranches.IgnoreQueryFilters().ToListAsync());
         Assert.Single(await verify.TaskLinks.ToListAsync());
     }
+
+    // The tests below close gaps found by an independent mutation sweep on 2026-08-22. Each one
+    // exists because a mutant survived everything above it.
+
+    /// <summary>
+    /// Which installation a call carries decides whose GitHub account it lands in, so a wrong
+    /// one is a tenancy leak rather than a bug in a URL. Nothing in this file could see it until
+    /// the fake started recording the argument.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_CallsGitHubAsThisCompanysOwnInstallation()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEmpty(api.InstallationIds);
+        Assert.All(api.InstallationIds, id => Assert.Equal(7401L, id));
+    }
+
+    /// <summary>
+    /// The membership gate runs before the task lookup, so a non-member cannot tell a task that
+    /// does not exist from one they may not see. Pairing the two is the only way to observe the
+    /// order: either check alone answers the same way.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_ForANonMember_OnANonexistentTask_IsForbidden_NotNotFound()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, OutsiderUserId, isCompanyAdmin: false, taskId: 999_999,
+            new CreateBranchDto(null, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Auth.Forbidden", result.Errors[0].Code);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_ForATaskWithNoProject_SaysSo()
+    {
+        int looseTaskId;
+
+        await using (var arrange = NewContext())
+        {
+            var loose = new TaskEntity { Title = "No project", Number = 1, ProjectId = null, CompanyId = _companyId };
+            arrange.Tasks.Add(loose);
+            await arrange.SaveChangesAsync();
+            looseTaskId = loose.Id;
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, new FakeGitHubApiClient()).CreateForTaskAsync(
+            _companyId, OutsiderUserId, isCompanyAdmin: true, looseTaskId,
+            new CreateBranchDto(null, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.TaskHasNoProject", result.Errors[0].Code);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_WhenTheCompanyIsNotConnectedToGitHub_SaysSo()
+    {
+        await using (var arrange = NewContext())
+        {
+            // Soft-deleted rather than removed, which is both what a disconnect actually does
+            // and the only option here: the repositories carry a foreign key to it.
+            var installation = await arrange.GitHubInstallations.SingleAsync();
+            installation.IsDeleted = true;
+            installation.DeletedAt = DateTime.UtcNow;
+            await arrange.SaveChangesAsync();
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, new FakeGitHubApiClient()).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.NotConnected", result.Errors[0].Code);
+    }
+
+    /// <summary>
+    /// A name pasted with surrounding whitespace is a legal intent, not a rejection: a leading
+    /// space would otherwise fail the ref allowlist and read as "that is not a valid name".
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_TrimsWhitespaceAroundTheName_RatherThanRefusingIt()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "  TS-42/crud-for-product  "), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("TS-42/crud-for-product", result.Value!.Name);
+        Assert.Contains("\"ref\":\"refs/heads/TS-42/crud-for-product\"", Assert.Single(api.Posts).Body);
+    }
+
+    /// <summary>
+    /// When the ref already exists, its head is read from the branch itself — and if that read
+    /// fails, the base SHA stands rather than a null being written into a non-null column. The
+    /// failure path of the second read had no test at all.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_WhenTheExistingRefsHeadCannotBeRead_KeepsTheBaseSha()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .FailGet("git/ref/heads/TS-42/crud-for-product", new Error("GitHub.RequestFailed", "GitHub returned 500."))
+            .FailPost("git/refs", new Error(
+                "GitHub.UnprocessableEntity",
+                "GitHub returned 422 for .../git/refs. Reference already exists"));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.AlreadyExisted);
+        Assert.Equal("basesha123", result.Value.HeadSha);
+
+        await using var verify = NewContext();
+        Assert.Equal("basesha123", (await verify.GitHubBranches.SingleAsync()).HeadSha);
+    }
+
+    /// <summary>
+    /// The already-exists match reads GitHub's prose, which is not ours to spell. Matching it
+    /// case-sensitively would turn a branch that exists into a failure on a wording change.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_RecognisesTheAlreadyExistsMessage_WhateverItsCasing()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnGet("git/ref/heads/TS-42/crud-for-product", "{\"object\":{\"sha\":\"branchsha\"}}")
+            .FailPost("git/refs", new Error(
+                "GitHub.UnprocessableEntity",
+                "GitHub returned 422 for .../git/refs. reference already EXISTS"));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.AlreadyExisted);
+    }
+
+    /// <summary>
+    /// The candidate repositories are what the dialog's picker renders, so their order is part
+    /// of the contract rather than an accident of the query.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Suggestion_OrdersTheCandidateRepositoriesByName()
+    {
+        await using (var arrange = NewContext())
+        {
+            arrange.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                CompanyId = _companyId,
+                ProjectId = _projectId,
+                GitHubRepositoryId = _otherRepositoryId,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, new FakeGitHubApiClient())
+            .GetSuggestionAsync(_companyId, MemberUserId, isCompanyAdmin: false, _taskId, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            new[] { "rigon-org/api", "rigon-org/web" },
+            result.Value!.Repositories.Select(r => r.FullName).ToArray());
+    }
 }
 
 /// <summary>
@@ -554,6 +768,13 @@ internal sealed class FakeGitHubApiClient : TaskSphere.Application.Interfaces.IG
 
     public List<string> GetUrls { get; } = new();
     public List<(string Url, string Body)> Posts { get; } = new();
+
+    /// <summary>
+    /// Every installation id this client was called with. Recorded because the id decides which
+    /// company's GitHub account a write lands in: a call carrying the wrong one is a tenancy
+    /// leak, and until this list existed nothing in the file could see it.
+    /// </summary>
+    public List<long> InstallationIds { get; } = new();
 
     public FakeGitHubApiClient OnGet(string fragment, string body)
     {
@@ -585,6 +806,7 @@ internal sealed class FakeGitHubApiClient : TaskSphere.Application.Interfaces.IG
         long installationId, string url, CancellationToken cancellationToken = default)
     {
         GetUrls.Add(url);
+        InstallationIds.Add(installationId);
         return SystemTask.Task.FromResult(Match(_gets, url));
     }
 
@@ -592,6 +814,7 @@ internal sealed class FakeGitHubApiClient : TaskSphere.Application.Interfaces.IG
         long installationId, string url, string jsonBody, CancellationToken cancellationToken = default)
     {
         Posts.Add((url, jsonBody));
+        InstallationIds.Add(installationId);
         return SystemTask.Task.FromResult(Match(_posts, url));
     }
 

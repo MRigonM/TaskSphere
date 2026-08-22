@@ -65,6 +65,9 @@ public class GitHubDependencyInjectionTests
         Assert.NotNull(sp.GetRequiredService<IGitHubTaskLinkResolver>());
         Assert.NotNull(sp.GetRequiredService<IGitHubActivitySyncService>());
         Assert.NotNull(sp.GetRequiredService<IGitHubTaskActivityService>());
+
+        // Task 10 also adds IGitHubBranchService, reached by TasksController.
+        Assert.NotNull(sp.GetRequiredService<IGitHubBranchService>());
     }
 
     [Fact]

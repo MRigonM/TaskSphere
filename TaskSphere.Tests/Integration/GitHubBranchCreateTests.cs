@@ -264,6 +264,79 @@ public class GitHubBranchCreateTests : IAsyncLifetime
 
     // Task 7: The refusals — wrong repository, bad name, another task's key
 
+    /// <summary>
+    /// TS links rigon-org/api only. A request naming the other repository must not put the
+    /// branch there: with one link the request's repositoryId is ignored, not obeyed.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_WithOneLink_IgnoresARequestedRepository_RatherThanTrustingIt()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(_otherRepositoryId, "TS-42/crud"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("https://api.github.com/repos/rigon-org/api/git/refs", Assert.Single(api.Posts).Url);
+
+        await using var verify = NewContext();
+        Assert.Equal(_repositoryId, (await verify.GitHubBranches.SingleAsync()).GitHubRepositoryId);
+    }
+
+    /// <summary>
+    /// With several links the choice cannot be guessed: picking the first would put the branch
+    /// in a repository nobody named.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_WithSeveralLinks_RequiresAChoice()
+    {
+        await using (var arrange = NewContext())
+        {
+            arrange.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                CompanyId = _companyId,
+                ProjectId = _projectId,
+                GitHubRepositoryId = _otherRepositoryId,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.RepositoryRequired", result.Errors[0].Code);
+        Assert.Empty(api.Posts);
+    }
+
+    /// <summary>
+    /// A refusal that still spent a GitHub call would leak the existence of the task to a
+    /// non-member through rate limit and through the audit trail. Nothing is called at all.
+    /// </summary>
+    [Fact]
+    public async SystemTask.Task Create_RefusedForANonMember_NeverCallsGitHub()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, OutsiderUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Auth.Forbidden", result.Errors[0].Code);
+        Assert.Empty(api.Posts);
+        Assert.Empty(api.GetUrls);
+    }
+
     [Fact]
     public async SystemTask.Task Create_WithSeveralLinks_RefusesARepositoryThisProjectDoesNotLink()
     {

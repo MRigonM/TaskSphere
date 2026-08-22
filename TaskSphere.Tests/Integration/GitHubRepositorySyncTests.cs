@@ -93,6 +93,16 @@ public class GitHubRepositorySyncTests : IAsyncLifetime
 
             return Task.FromResult(Result<GitHubResponse>.Success(_responses.Dequeue()));
         }
+
+        public Task<Result<GitHubResponse>> PostAsync(long installationId, string url, string jsonBody, CancellationToken cancellationToken = default)
+        {
+            RequestedUrls.Add(url);
+
+            if (Failure is not null)
+                return Task.FromResult(Result<GitHubResponse>.Failure(Failure));
+
+            return Task.FromResult(Result<GitHubResponse>.Success(_responses.Dequeue()));
+        }
     }
 
     private static string Page(string selection, params (long Id, string FullName, string Branch, bool Private)[] repos)

@@ -161,6 +161,22 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
             return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse("[]", null)));
         }
+
+        public Task<Result<GitHubResponse>> PostAsync(long installationId, string url, string jsonBody, CancellationToken cancellationToken = default)
+        {
+            RequestedUrls.Add(url);
+            RequestedInstallationIds.Add(installationId);
+
+            foreach (var (match, error) in _failures)
+                if (url.Contains(match, StringComparison.Ordinal))
+                    return Task.FromResult(Result<GitHubResponse>.Failure(error));
+
+            foreach (var (match, body, linkHeader) in _responses)
+                if (url.Contains(match, StringComparison.Ordinal))
+                    return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse(body, linkHeader)));
+
+            return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse("{}", null)));
+        }
     }
 
     private static string Branches(params (string Name, string Sha)[] branches)

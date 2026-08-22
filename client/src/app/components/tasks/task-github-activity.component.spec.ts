@@ -104,6 +104,16 @@ function text(fixture: { nativeElement: HTMLElement }): string {
   return fixture.nativeElement.textContent ?? '';
 }
 
+/** Mount as a member (User role) and leave the first read in flight. */
+function setupAsMember() {
+  return mount({ role: 'User' });
+}
+
+/** Answer the activity read request. */
+function flushActivity(req: any, body: any = full) {
+  req.flush(body);
+}
+
 describe('TaskGitHubActivityComponent', () => {
   afterEach(() => {
     try {
@@ -500,5 +510,55 @@ describe('TaskGitHubActivityComponent', () => {
 
     expect(text(fixture)).toContain('This company is not connected to GitHub.');
     expect(text(fixture)).not.toContain('GitHub returned 404.');
+  });
+
+  it('offers the create-branch button to a member, who has no sync button', async () => {
+    // Members see the panel and may create a branch: the repo↔project link authorizes it.
+    // Sync stays admin-only — it is company-wide and spends installation rate limit.
+    const { fixture, http, req } = setupAsMember();
+    flushActivity(req);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(host(fixture).querySelector('[data-create-branch]')).not.toBeNull();
+    expect(host(fixture).querySelector('[data-sync]')).toBeNull();
+  });
+
+  it('opens the dialog on click', async () => {
+    const { fixture, http, req } = setupAsMember();
+    flushActivity(req);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-create-branch-dialog')).toBeNull();
+
+    fixture.nativeElement.querySelector('[data-create-branch]').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-create-branch-dialog')).not.toBeNull();
+
+    // The dialog makes a suggestion request when it mounts; flush it before exiting the test.
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-branch/suggestion`).flush({
+      taskKey: 'TS-42',
+      suggestedName: 'TS-42/crud-for-product',
+      repositories: [{ id: 7, fullName: 'rigon-org/api', defaultBranch: 'main' }],
+    });
+  });
+
+  it('re-reads the activity after a branch is created', async () => {
+    const { fixture, http, req } = setupAsMember();
+    flushActivity(req);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    fixture.componentInstance.onBranchCreated();
+
+    // A second read, through the same load() every other refresh uses — the new branch and
+    // its link arrive from the server rather than being spliced in client-side.
+    flushActivity(http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.showBranchDialog()).toBe(false);
   });
 });

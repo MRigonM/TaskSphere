@@ -1,6 +1,16 @@
 <div class="space-y-4 text-sm">
-  <div *ngIf="isCompanyAdmin" class="flex justify-end">
+  <div class="flex justify-end gap-2">
     <button
+      data-create-branch
+      type="button"
+      class="rounded-xl border border-white/10 px-3 py-1 text-xs hover:bg-white/10"
+      (click)="openBranchDialog()"
+    >
+      Create branch
+    </button>
+
+    <button
+      *ngIf="isCompanyAdmin"
       data-sync
       type="button"
       [disabled]="syncing()"
@@ -102,4 +112,11 @@
       Last synced {{ activity.lastSyncedAtUtc | date: 'medium' }}
     </p>
   </ng-container>
+
+  <app-create-branch-dialog
+    *ngIf="showBranchDialog()"
+    [taskId]="taskId"
+    (created)="onBranchCreated()"
+    (closed)="showBranchDialog.set(false)"
+  />
 </div>

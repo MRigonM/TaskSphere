@@ -10,6 +10,7 @@ import {
 } from '../../core/models/github-activity.models';
 import { AuthStoreService } from '../../core/services/auth-store.service';
 import { GitHubActivityService } from '../../core/services/github-activity.service';
+import { CreateBranchDialogComponent } from './create-branch-dialog.component';
 
 /**
  * A task's GitHub activity, read from the mirror. It owns its own load and stays mounted
@@ -24,7 +25,7 @@ import { GitHubActivityService } from '../../core/services/github-activity.servi
 @Component({
   selector: 'app-task-github-activity',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CreateBranchDialogComponent],
   templateUrl: './task-github-activity.component.html',
 })
 export class TaskGitHubActivityComponent implements OnChanges {
@@ -41,6 +42,8 @@ export class TaskGitHubActivityComponent implements OnChanges {
   syncing = signal(false);
   /** Reported, not thrown: a repository that failed does not make the run a failure. */
   syncFailures = signal<SyncFailureDto[]>([]);
+
+  showBranchDialog = signal(false);
 
   isCompanyAdmin = this.auth.isCompany();
 
@@ -106,6 +109,16 @@ export class TaskGitHubActivityComponent implements OnChanges {
         finalize(() => this.syncing.set(false))
       )
       .subscribe();
+  }
+
+  openBranchDialog() {
+    this.showBranchDialog.set(true);
+  }
+
+  /** One refresh path: the panel re-reads rather than splicing the new branch in locally. */
+  onBranchCreated() {
+    this.showBranchDialog.set(false);
+    this.load();
   }
 
   /** The subject line. A commit body belongs on GitHub, not in a modal. */

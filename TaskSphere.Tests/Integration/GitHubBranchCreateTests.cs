@@ -399,6 +399,75 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         Assert.False(result.IsSuccess);
         Assert.Equal("GitHub.RateLimited", result.Errors[0].Code);
     }
+
+    // Task 9: Reviving a soft-deleted branch row
+
+    [Fact]
+    public async SystemTask.Task Create_RevivesASoftDeletedRow_RatherThanCollidingWithTheIndex()
+    {
+        await using (var arrange = NewContext())
+        {
+            arrange.GitHubBranches.Add(new GitHubBranch
+            {
+                GitHubRepositoryId = _repositoryId,
+                CompanyId = _companyId,
+                Name = "TS-42/crud-for-product",
+                HeadSha = "oldsha",
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow.AddDays(-3),
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+
+        await using var verify = NewContext();
+        var rows = await verify.GitHubBranches.IgnoreQueryFilters()
+            .Where(b => b.GitHubRepositoryId == _repositoryId)
+            .ToListAsync();
+
+        var row = Assert.Single(rows);
+        Assert.False(row.IsDeleted);
+        Assert.Null(row.DeletedAt);
+        Assert.Equal("basesha123", row.HeadSha);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_Twice_KeepsOneRowAndOneLink()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{}");
+
+        await using (var first = NewContext())
+        {
+            await NewService(first, api).CreateForTaskAsync(
+                _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+                new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+        }
+
+        await using (var second = NewContext())
+        {
+            var result = await NewService(second, api).CreateForTaskAsync(
+                _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+                new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+            Assert.True(result.IsSuccess);
+        }
+
+        await using var verify = NewContext();
+        Assert.Single(await verify.GitHubBranches.IgnoreQueryFilters().ToListAsync());
+        Assert.Single(await verify.TaskLinks.ToListAsync());
+    }
 }
 
 /// <summary>

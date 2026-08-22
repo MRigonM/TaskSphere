@@ -162,21 +162,13 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse("[]", null)));
         }
 
+        /// <summary>
+        /// The activity sync is read-only, so a POST from it is a defect rather than a case to
+        /// stub. Throwing makes that loud; returning a queued response would let it pass — and
+        /// would silently consume a response the next GET was waiting for.
+        /// </summary>
         public Task<Result<GitHubResponse>> PostAsync(long installationId, string url, string jsonBody, CancellationToken cancellationToken = default)
-        {
-            RequestedUrls.Add(url);
-            RequestedInstallationIds.Add(installationId);
-
-            foreach (var (match, error) in _failures)
-                if (url.Contains(match, StringComparison.Ordinal))
-                    return Task.FromResult(Result<GitHubResponse>.Failure(error));
-
-            foreach (var (match, body, linkHeader) in _responses)
-                if (url.Contains(match, StringComparison.Ordinal))
-                    return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse(body, linkHeader)));
-
-            return Task.FromResult(Result<GitHubResponse>.Success(new GitHubResponse("{}", null)));
-        }
+            => throw new NotSupportedException($"The activity sync must never POST. It attempted {url}.");
     }
 
     private static string Branches(params (string Name, string Sha)[] branches)

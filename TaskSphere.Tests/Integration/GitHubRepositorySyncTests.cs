@@ -94,15 +94,13 @@ public class GitHubRepositorySyncTests : IAsyncLifetime
             return Task.FromResult(Result<GitHubResponse>.Success(_responses.Dequeue()));
         }
 
+        /// <summary>
+        /// The repository sync is read-only, so a POST from it is a defect rather than a case to
+        /// stub. Throwing makes that loud; dequeuing a response would let it pass — and would
+        /// consume the response the next GET was waiting for.
+        /// </summary>
         public Task<Result<GitHubResponse>> PostAsync(long installationId, string url, string jsonBody, CancellationToken cancellationToken = default)
-        {
-            RequestedUrls.Add(url);
-
-            if (Failure is not null)
-                return Task.FromResult(Result<GitHubResponse>.Failure(Failure));
-
-            return Task.FromResult(Result<GitHubResponse>.Success(_responses.Dequeue()));
-        }
+            => throw new NotSupportedException($"The repository sync must never POST. It attempted {url}.");
     }
 
     private static string Page(string selection, params (long Id, string FullName, string Branch, bool Private)[] repos)

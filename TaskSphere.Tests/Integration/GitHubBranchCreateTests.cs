@@ -186,6 +186,81 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         Assert.False(result.IsSuccess);
         Assert.Equal("GitHub.NoLinkedRepository", result.Errors[0].Code);
     }
+
+    private const string RefBody = "{\"ref\":\"refs/heads/main\",\"object\":{\"sha\":\"basesha123\"}}";
+
+    [Fact]
+    public async SystemTask.Task Create_PostsTheRefAndTheBaseSha_ThenMirrorsAndLinksTheBranch()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnPost("git/refs", "{\"ref\":\"refs/heads/TS-42/crud-for-product\"}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.AlreadyExisted);
+        Assert.Equal("TS-42/crud-for-product", result.Value.Name);
+        Assert.Equal("basesha123", result.Value.HeadSha);
+        Assert.Equal("https://github.com/rigon-org/api/tree/TS-42/crud-for-product", result.Value.HtmlUrl);
+
+        // The body, not just the URL: a create that posted the wrong ref or the wrong base
+        // would pass a URL-only assertion.
+        var (url, body) = Assert.Single(api.Posts);
+        Assert.Equal("https://api.github.com/repos/rigon-org/api/git/refs", url);
+        Assert.Contains("\"ref\":\"refs/heads/TS-42/crud-for-product\"", body);
+        Assert.Contains("\"sha\":\"basesha123\"", body);
+
+        await using var verify = NewContext();
+        var branch = await verify.GitHubBranches.SingleAsync(b => b.GitHubRepositoryId == _repositoryId);
+        Assert.Equal("TS-42/crud-for-product", branch.Name);
+        Assert.Equal("basesha123", branch.HeadSha);
+        Assert.False(branch.IsDeleted);
+
+        // The resolver ran over the mirror, so the branch is already on the task.
+        var link = await verify.TaskLinks.SingleAsync();
+        Assert.Equal(_taskId, link.TaskId);
+        Assert.Equal(branch.Id, link.GitHubBranchId);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_ReadsTheBaseFromTheRepositorysOwnDefaultBranch()
+    {
+        // The other project's repository defaults to "develop", not "main". A hardcoded
+        // "main" would pass every single-repository test and fail here.
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/develop", "{\"object\":{\"sha\":\"devsha\"}}")
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, OutsiderUserId, isCompanyAdmin: true, _otherTaskId,
+            new CreateBranchDto(null, "OTH-42/other-work"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(api.GetUrls, u => u.EndsWith("/git/ref/heads/develop", StringComparison.Ordinal));
+        Assert.Equal("devsha", result.Value!.HeadSha);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_LinksTheBranchToTheRightTask_WhenTwoProjectsShareATaskNumber()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/develop", "{\"object\":{\"sha\":\"devsha\"}}")
+            .OnPost("git/refs", "{}");
+
+        await using var db = NewContext();
+        await NewService(db, api).CreateForTaskAsync(
+            _companyId, OutsiderUserId, isCompanyAdmin: true, _otherTaskId,
+            new CreateBranchDto(null, "OTH-42/other-work"), default);
+
+        await using var verify = NewContext();
+        var link = await verify.TaskLinks.SingleAsync();
+        Assert.Equal(_otherTaskId, link.TaskId);
+    }
 }
 
 /// <summary>

@@ -320,6 +320,85 @@ public class GitHubBranchCreateTests : IAsyncLifetime
         Assert.Empty(api.Posts);
         Assert.Empty(api.GetUrls);
     }
+
+    // Task 8: GitHub's own failures — already exists, not approved, missing base
+
+    [Fact]
+    public async SystemTask.Task Create_WhenTheRefAlreadyExists_IsSuccess_WithTheBranchsOwnHead()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnGet("git/ref/heads/TS-42/crud-for-product", "{\"object\":{\"sha\":\"branchsha\"}}")
+            .FailPost("git/refs", new Error(
+                "GitHub.UnprocessableEntity",
+                "GitHub returned 422 for https://api.github.com/repos/rigon-org/api/git/refs. Reference already exists"));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.AlreadyExisted);
+        // Not the base sha: the branch is wherever GitHub has it.
+        Assert.Equal("branchsha", result.Value.HeadSha);
+
+        await using var verify = NewContext();
+        Assert.Equal("branchsha", (await verify.GitHubBranches.SingleAsync()).HeadSha);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_WhenWriteAccessIsNotApproved_SaysWhoHasToApproveIt()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .FailPost("git/refs", new Error("GitHub.Forbidden", "GitHub returned 403 for .../git/refs. Resource not accessible by integration"));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.WriteNotApproved", result.Errors[0].Code);
+        Assert.Contains("approve", result.Errors[0].Description, StringComparison.OrdinalIgnoreCase);
+
+        await using var verify = NewContext();
+        Assert.Empty(await verify.GitHubBranches.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_WhenTheDefaultBranchIsGone_NamesTheDefaultBranch_NotTheNewOne()
+    {
+        var api = new FakeGitHubApiClient()
+            .FailGet("git/ref/heads/main", new Error("GitHub.NotFound", "GitHub returned 404 for .../git/ref/heads/main."));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.DefaultBranchMissing", result.Errors[0].Code);
+        Assert.Contains("main", result.Errors[0].Description);
+        Assert.Empty(api.Posts);
+    }
+
+    [Fact]
+    public async SystemTask.Task Create_WhenRateLimited_PassesTheTypedFailureThrough()
+    {
+        var api = new FakeGitHubApiClient()
+            .OnGet("git/ref/heads/main", RefBody)
+            .FailPost("git/refs", new Error("GitHub.RateLimited", "GitHub rate limit hit. Retry after 60s."));
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).CreateForTaskAsync(
+            _companyId, MemberUserId, isCompanyAdmin: false, _taskId,
+            new CreateBranchDto(null, "TS-42/crud-for-product"), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.RateLimited", result.Errors[0].Code);
+    }
 }
 
 /// <summary>

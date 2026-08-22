@@ -67,3 +67,35 @@ export interface SyncActivityResultDto {
   linksCreated: number;
   failures: SyncFailureDto[];
 }
+
+export interface BranchRepositoryOptionDto {
+  id: number;
+  fullName: string;
+  defaultBranch: string;
+}
+
+/**
+ * `taskKey` is here so the dialog can refuse an edit that drops it. The authoritative check is
+ * `TaskKeyScanner` on the server — this is a hint, deliberately, rather than a second
+ * implementation of the scanner in TypeScript.
+ */
+export interface BranchSuggestionDto {
+  taskKey: string;
+  suggestedName: string;
+  repositories: BranchRepositoryOptionDto[];
+}
+
+export interface CreateBranchDto {
+  /** Null when the project links exactly one repository — the server ignores it in that case. */
+  repositoryId: number | null;
+  name: string;
+}
+
+/** `alreadyExisted` is not an error: the branch is there, which is what was asked for. */
+export interface CreatedBranchDto {
+  id: number;
+  name: string;
+  headSha: string;
+  htmlUrl: string;
+  alreadyExisted: boolean;
+}

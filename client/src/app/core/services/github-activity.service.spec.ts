@@ -5,7 +5,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 
 import { environment } from '../../../environments/environment';
 import { GitHubActivityService } from './github-activity.service';
-import { PullRequestState, TaskGitHubActivityDto } from '../models/github-activity.models';
+import { PullRequestState, TaskGitHubActivityDto, BranchSuggestionDto, CreatedBranchDto } from '../models/github-activity.models';
 
 const activity: TaskGitHubActivityDto = {
   commits: [
@@ -107,5 +107,41 @@ describe('GitHubActivityService', () => {
     expect(PullRequestState.Open).toBe(0);
     expect(PullRequestState.Closed).toBe(1);
     expect(PullRequestState.Merged).toBe(2);
+  });
+
+  it('asks for the suggestion on the tasks route', () => {
+    const { service, http } = setup();
+    let received: BranchSuggestionDto | undefined;
+
+    service.suggestBranch(42).subscribe(s => (received = s));
+
+    const req = http.expectOne(`${environment.apiUrl}Tasks/42/github-branch/suggestion`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ taskKey: 'TS-42', suggestedName: 'TS-42/crud', repositories: [] });
+
+    expect(received?.suggestedName).toBe('TS-42/crud');
+  });
+
+  it('posts the chosen repository and name to the tasks route', () => {
+    const { service, http } = setup();
+    let received: CreatedBranchDto | undefined;
+
+    service.createBranch(42, { repositoryId: 7, name: 'TS-42/crud' }).subscribe(c => (received = c));
+
+    const req = http.expectOne(`${environment.apiUrl}Tasks/42/github-branch`);
+    expect(req.request.method).toBe('POST');
+    // The body, not just the URL: a create that dropped the repository choice would still
+    // hit the right URL.
+    expect(req.request.body).toEqual({ repositoryId: 7, name: 'TS-42/crud' });
+
+    req.flush({
+      id: 1,
+      name: 'TS-42/crud',
+      headSha: 'abc',
+      htmlUrl: 'https://github.com/o/r/tree/TS-42/crud',
+      alreadyExisted: false,
+    });
+
+    expect(received?.alreadyExisted).toBe(false);
   });
 });

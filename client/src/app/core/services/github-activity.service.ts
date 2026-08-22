@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { SyncActivityResultDto, TaskGitHubActivityDto } from '../models/github-activity.models';
+import { SyncActivityResultDto, TaskGitHubActivityDto, BranchSuggestionDto, CreateBranchDto, CreatedBranchDto } from '../models/github-activity.models';
 
 /**
  * Two endpoints on two controllers, and the split is deliberate: the read sits on
@@ -23,5 +23,16 @@ export class GitHubActivityService {
   /** Company-wide despite being triggered from a task. Company role only. */
   sync(): Observable<SyncActivityResultDto> {
     return this.http.post<SyncActivityResultDto>(`${environment.apiUrl}GitHub/activity/sync`, null);
+  }
+
+  /** Both branch endpoints sit on `TasksController`, so a project Member can reach them. */
+  suggestBranch(taskId: number): Observable<BranchSuggestionDto> {
+    return this.http.get<BranchSuggestionDto>(
+      `${environment.apiUrl}Tasks/${taskId}/github-branch/suggestion`
+    );
+  }
+
+  createBranch(taskId: number, dto: CreateBranchDto): Observable<CreatedBranchDto> {
+    return this.http.post<CreatedBranchDto>(`${environment.apiUrl}Tasks/${taskId}/github-branch`, dto);
   }
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Audit;
 using TaskSphere.Domain.Enums;
 using TaskSphere.Infrastructure.Data;
@@ -414,5 +415,87 @@ public class MergeTransitionTests : IAsyncLifetime
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
         Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task A_pull_request_pointing_at_a_deleted_task_does_not_discard_earlier_work()
+    {
+        // Two pull requests in one pass. The first moves a task; the second names a task that
+        // was soft-deleted after the map was built, so it resolves to nothing.
+        await AddPullRequest(_apiRepositoryId, 30, "TS-42/add-the-panel");
+        await AddPullRequest(_apiRepositoryId, 31, "TS-60/the-tab");
+
+        await using (var edit = NewContext())
+        {
+            var task = await edit.Set<TaskEntity>().SingleAsync(t => t.Id == _ts60TaskId);
+            task.IsDeleted = true;
+            task.DeletedAt = DateTime.UtcNow;
+            await edit.SaveChangesAsync();
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        // The first pull request's work is persisted regardless of what the second one does.
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.Equal(1, result.Value!.Transitioned);
+    }
+
+    [Fact]
+    public async SystemTask.Task Reports_success_with_counts_rather_than_an_error_when_nothing_is_pending()
+    {
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new MergeTransitionResult(0, 0, 0), result.Value);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_pull_request_whose_write_fails_does_not_discard_earlier_work()
+    {
+        // The soft-deleted-task version of this test does not actually witness the
+        // per-pull-request save: nothing throws, so moving SaveChangesAsync out of the loop
+        // keeps it green. This one makes one pull request's write genuinely fail, which is
+        // the only thing that can tell the two persistence units apart.
+        await AddPullRequest(_apiRepositoryId, 32, "TS-42/add-the-panel");
+        await AddPullRequest(_apiRepositoryId, 33, "TS-60/the-tab");
+
+        await using (var edit = NewContext())
+            await edit.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE Tasks ADD CONSTRAINT CK_MergeTransitionTest " +
+                $"CHECK (NOT ([Id] = {_ts60TaskId} AND [Status] = 'Done'))");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        // A failure is a count, not an abort — and the pull request that already succeeded
+        // keeps its work.
+        Assert.Equal(1, result.Value!.Transitioned);
+        Assert.Equal(1, result.Value!.Failed);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.Equal(TaskStatuses.Open, await StatusOf(_ts60TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task A_failed_pull_request_does_not_poison_the_ones_after_it()
+    {
+        // The failed write leaves its change tracked in the same DbContext. If it is not
+        // discarded, the NEXT pull request's save re-attempts it and fails too, turning one
+        // bad row into the rest of the pass.
+        await AddPullRequest(_apiRepositoryId, 34, "TS-60/the-tab");
+        await AddPullRequest(_apiRepositoryId, 35, "TS-42/add-the-panel");
+
+        await using (var edit = NewContext())
+            await edit.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE Tasks ADD CONSTRAINT CK_MergeTransitionTest " +
+                $"CHECK (NOT ([Id] = {_ts60TaskId} AND [Status] = 'Done'))");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(1, result.Value!.Failed);
+        Assert.Equal(1, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
     }
 }

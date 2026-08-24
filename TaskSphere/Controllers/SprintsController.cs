@@ -32,7 +32,7 @@ public class SprintsController : ApiBaseController
         var result = await _sprintService.GetByIdAsync(CompanyId, sprintId, UserId, IsCompanyAdmin, ct);
         return FromResult(result);
     }
-
+    
     [Audit("Created a sprint")]
     [Authorize(Roles = Roles.Company)]
     [HttpPost]

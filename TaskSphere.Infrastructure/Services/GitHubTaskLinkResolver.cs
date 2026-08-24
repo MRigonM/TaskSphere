@@ -24,26 +24,7 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
 
     public async Task<TaskLinkResolution> ResolveAsync(Guid companyId, CancellationToken cancellationToken = default)
     {
-        // Everything below is company-scoped and filtered. A soft-deleted link must not
-        // authorize, and a soft-deleted project must not resolve a key.
-        var projectsByKey = await _unitOfWork.Projects
-            .GetCompanyProjects(companyId)
-            .Select(p => new { p.Id, p.Key })
-            .ToDictionaryAsync(p => p.Key, p => p.Id, StringComparer.Ordinal, cancellationToken);
-
-        var authorized = (await _unitOfWork.ProjectRepositoryLinks
-                .GetByCompany(companyId)
-                .Select(l => new { l.ProjectId, l.GitHubRepositoryId })
-                .ToListAsync(cancellationToken))
-            .Select(l => (l.ProjectId, l.GitHubRepositoryId))
-            .ToHashSet();
-
-        var taskIdByProjectAndNumber = (await _unitOfWork.Tasks
-                .GetAll()
-                .Where(t => t.CompanyId == companyId && t.ProjectId != null)
-                .Select(t => new { t.Id, ProjectId = t.ProjectId!.Value, t.Number })
-                .ToListAsync(cancellationToken))
-            .ToDictionary(t => (t.ProjectId, t.Number), t => t.Id);
+        var map = await TaskKeyResolutionMap.BuildAsync(_unitOfWork, companyId, cancellationToken);
 
         // Existing links, so a re-run inserts nothing. Keyed by the kind's FK as well as the
         // task, because the three unique indexes are per-kind.
@@ -100,7 +81,7 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
             {
                 seen++;
 
-                var taskId = ResolveTask(key, gitHubRepositoryId);
+                var taskId = map.Resolve(key, gitHubRepositoryId);
 
                 if (taskId is null)
                 {
@@ -122,22 +103,6 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
 
                 created++;
             }
-        }
-
-        // Steps 1-3 of the spec's resolution order, in order. Step 2 is the authorization
-        // boundary: without it, push access to any repository under the installation would be
-        // enough to attach activity to any project.
-        int? ResolveTask(TaskKey key, int gitHubRepositoryId)
-        {
-            if (!projectsByKey.TryGetValue(key.ProjectKey, out var projectId))
-                return null;
-
-            if (!authorized.Contains((projectId, gitHubRepositoryId)))
-                return null;
-
-            return taskIdByProjectAndNumber.TryGetValue((projectId, key.Number), out var taskId)
-                ? taskId
-                : null;
         }
     }
 }

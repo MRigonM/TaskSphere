@@ -172,7 +172,7 @@ public record UpdateProjectSettingsDto(bool AutoDoneOnMerge);
 
 `ProjectDto` gains `AutoDoneOnMerge` so the client can render current state.
 
-**Trap:** `ProjectDto` is a **positional record**. AutoMapper's constructor mapping on positional records is a recorded failure mode on this project. Add a mapping assertion to the existing `§B` configuration gate rather than trusting it compiles.
+**Checked, and the expected trap does not apply.** `ProjectDto` is a positional record, and AutoMapper's constructor mapping on positional records is a recorded failure mode on this project — but `ProjectDto` has **no AutoMapper profile at all**. It is hand-projected in four places (`ProjectService.cs:69,79,92` and `AccessControlService.cs:64`), so widening it is a compile-time break at each site and nothing more. No mapping configuration to update, and none should be added.
 
 ### Client
 

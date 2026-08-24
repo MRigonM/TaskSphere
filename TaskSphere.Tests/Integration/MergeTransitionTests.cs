@@ -235,4 +235,95 @@ public class MergeTransitionTests : IAsyncLifetime
         // Its branch name cannot change retroactively, so it is never worth reconsidering.
         Assert.NotNull(await MarkerOf(pullId));
     }
+
+    [Fact]
+    public async SystemTask.Task Leaves_a_blocked_task_alone_but_still_stamps_the_marker()
+    {
+        var pullId = await AddPullRequest(_apiRepositoryId, 10, "TS-51/the-sync");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        // Someone deliberately flagged a problem; a merge does not clear it.
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Blocked, await StatusOf(_ts51TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Does_not_revisit_a_blocked_task_after_it_is_unblocked()
+    {
+        await AddPullRequest(_apiRepositoryId, 11, "TS-51/the-sync");
+
+        await using (var first = NewContext())
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        await using (var edit = NewContext())
+        {
+            var task = await edit.Set<TaskEntity>().SingleAsync(t => t.Id == _ts51TaskId);
+            task.Status = TaskStatuses.InProgress;
+            await edit.SaveChangesAsync();
+        }
+
+        await using var second = NewContext();
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts51TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Writes_no_status_when_the_project_has_opted_out_but_stamps_the_marker()
+    {
+        var pullId = await AddPullRequest(_apiRepositoryId, 12, "OO-9/ignore-me");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Open, await StatusOf(_oo9TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Enabling_the_toggle_later_does_not_retroactively_move_the_task()
+    {
+        await AddPullRequest(_apiRepositoryId, 13, "OO-9/ignore-me");
+
+        await using (var first = NewContext())
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        await using (var edit = NewContext())
+        {
+            var project = await edit.Projects.SingleAsync(p => p.Id == _optOutProjectId);
+            project.AutoDoneOnMerge = true;
+            await edit.SaveChangesAsync();
+        }
+
+        await using var second = NewContext();
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        // Deliberate: ticking a checkbox must not mass-move a month of merged work.
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Open, await StatusOf(_oo9TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Leaves_a_task_that_is_already_done_alone()
+    {
+        await using (var edit = NewContext())
+        {
+            var task = await edit.Set<TaskEntity>().SingleAsync(t => t.Id == _ts60TaskId);
+            task.Status = TaskStatuses.Done;
+            await edit.SaveChangesAsync();
+        }
+
+        await AddPullRequest(_apiRepositoryId, 14, "TS-60/the-tab");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
+    }
 }

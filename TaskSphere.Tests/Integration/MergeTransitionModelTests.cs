@@ -101,4 +101,20 @@ public class MergeTransitionModelTests : IAsyncLifetime
 
         Assert.Null(reloaded.MergeTransitionAppliedAtUtc);
     }
+
+    [Fact]
+    public async SystemTask.Task The_upsert_block_does_not_list_the_marker_among_overwritten_fields()
+    {
+        // A source-level guard. The upsert overwrites every GitHub-sourced field by design;
+        // this column is TaskSphere's own and must survive a re-sync. A behavioural test would
+        // need the whole HTTP fake stack, so this pins the one line that would break it.
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..",
+            "TaskSphere.Infrastructure", "Services", "GitHubActivitySyncService.cs");
+
+        var source = await File.ReadAllTextAsync(Path.GetFullPath(path));
+
+        Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", source);
+    }
 }

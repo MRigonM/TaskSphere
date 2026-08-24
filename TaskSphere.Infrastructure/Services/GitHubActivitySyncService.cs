@@ -418,6 +418,9 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
                 existing.GitHubUpdatedAtUtc = updatedAt;
                 existing.MergedAtUtc = pull.MergedAt;
                 existing.HtmlUrl = pull.HtmlUrl ?? "";
+                // MergeTransitionAppliedAtUtc is deliberately NOT overwritten: it is
+                // TaskSphere's own marker, not a GitHub-sourced field, and clearing it here
+                // would re-apply every merge transition on the next sync.
                 existing.IsDeleted = false;
                 existing.DeletedAt = null;
 

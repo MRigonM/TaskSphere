@@ -326,4 +326,93 @@ public class MergeTransitionTests : IAsyncLifetime
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
     }
+
+    [Fact]
+    public async SystemTask.Task Applies_exactly_once_across_repeated_passes()
+    {
+        await AddPullRequest(_apiRepositoryId, 20, "TS-42/add-the-panel");
+
+        var queue = new AuditQueue();
+
+        await using (var first = NewContext())
+        {
+            var result = await NewService(first, queue).ApplyAsync(_companyId, "rigon", default);
+            Assert.Equal(1, result.Value!.Transitioned);
+        }
+
+        await using var second = NewContext();
+        var again = await NewService(second, queue).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, again.Value!.Transitioned);
+        Assert.Equal(0, again.Value!.Skipped);
+    }
+
+    [Fact]
+    public async SystemTask.Task Does_not_re_apply_after_a_human_moves_the_task_back()
+    {
+        await AddPullRequest(_apiRepositoryId, 21, "TS-42/add-the-panel");
+
+        await using (var first = NewContext())
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+
+        // A lead decides the work is not finished after all.
+        await using (var edit = NewContext())
+        {
+            var task = await edit.Set<TaskEntity>().SingleAsync(t => t.Id == _ts42TaskId);
+            task.Status = TaskStatuses.InProgress;
+            await edit.SaveChangesAsync();
+        }
+
+        await using var second = NewContext();
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        // The whole reason the marker exists: a status change is an action, not a fact, and
+        // re-applying it every sync would overrule the human.
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Refuses_a_key_whose_project_is_not_linked_to_the_pull_requests_repository()
+    {
+        // BS-42 exists and is Open, and BS has AutoDoneOnMerge = true — the ONLY thing that
+        // may stop this is the repository↔project link. api is linked to TS and OO, not BS.
+        var pullId = await AddPullRequest(_apiRepositoryId, 22, "BS-42/purge-it");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Open, await StatusOf(_bs42TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Refuses_every_key_from_a_repository_linked_to_no_project()
+    {
+        var pullId = await AddPullRequest(_webRepositoryId, 23, "TS-42/add-the-panel");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Transitions_every_task_a_multi_key_branch_names_then_stamps_once()
+    {
+        var pullId = await AddPullRequest(_apiRepositoryId, 24, "TS-42-and-TS-60/two-at-once");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+
+        Assert.Equal(2, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
 }

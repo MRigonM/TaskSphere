@@ -22,4 +22,14 @@ public class GitHubPullRequest : BaseEntity<int>
     public DateTime GitHubUpdatedAtUtc { get; set; }
     public DateTime? MergedAtUtc { get; set; }
     public string HtmlUrl { get; set; } = "";
+
+    /// <summary>
+    /// TaskSphere's own column, not GitHub's — non-null means "this pull request has already
+    /// been considered for a merge → Done transition", whether or not anything moved.
+    /// It is how the transition is made idempotent without observing a state edge: the sync
+    /// overwrites <see cref="State"/> on every pass, so "just became merged" is not
+    /// observable after the write.
+    /// The sync's upsert must leave this field alone.
+    /// </summary>
+    public DateTime? MergeTransitionAppliedAtUtc { get; set; }
 }

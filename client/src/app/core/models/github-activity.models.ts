@@ -65,6 +65,7 @@ export interface SyncActivityResultDto {
   branches: number;
   pullRequests: number;
   linksCreated: number;
+  tasksTransitioned: number;
   failures: SyncFailureDto[];
 }
 

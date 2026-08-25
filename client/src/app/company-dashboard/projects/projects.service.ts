@@ -26,6 +26,14 @@ export class ProjectsApiService {
     return this.http.get<ProjectDto>(`${this.base}${projectId}`);
   }
 
+  /**
+   * The only mutation a project has. The body carries the toggle alone — the server DTO is
+   * deliberately narrow so this cannot become a way to edit the project key.
+   */
+  updateSettings(projectId: number, autoDoneOnMerge: boolean): Observable<ProjectDto> {
+    return this.http.patch<ProjectDto>(`${this.base}${projectId}/settings`, { autoDoneOnMerge });
+  }
+
   getMembersProjects(): Observable<ProjectDto[]> {
     return this.http.get<ProjectDto[]>(`${this.base}mine`);
   }

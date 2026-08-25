@@ -8,8 +8,8 @@ import { CompanyRepositoryLinksDto } from '../../core/models/github.models';
 import { ProjectDto } from '../../core/models/projects.models';
 
 const projects: ProjectDto[] = [
-  { id: 7, name: 'Apollo', key: 'APO' },
-  { id: 8, name: 'Borealis', key: 'BOR' },
+  { id: 7, name: 'Apollo', key: 'APO', autoDoneOnMerge: false },
+  { id: 8, name: 'Borealis', key: 'BOR', autoDoneOnMerge: false },
 ];
 
 /** `id` is the local GitHubRepository PK — the id the link endpoints take. */

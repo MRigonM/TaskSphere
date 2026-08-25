@@ -40,6 +40,9 @@ export class TaskGitHubActivityComponent implements OnChanges {
   error = signal<string | null>(null);
 
   syncing = signal(false);
+  /** Non-null only after a sync that moved something: the transition is otherwise invisible. */
+  tasksTransitioned = signal<number | null>(null);
+
   /** Reported, not thrown: a repository that failed does not make the run a failure. */
   syncFailures = signal<SyncFailureDto[]>([]);
 
@@ -94,12 +97,14 @@ export class TaskGitHubActivityComponent implements OnChanges {
     this.syncing.set(true);
     this.error.set(null);
     this.syncFailures.set([]);
+    this.tasksTransitioned.set(null);
 
     this.activityApi
       .sync()
       .pipe(
         tap(result => {
           this.syncFailures.set(result.failures);
+          this.tasksTransitioned.set(result.tasksTransitioned > 0 ? result.tasksTransitioned : null);
           this.load();
         }),
         catchError(err => {

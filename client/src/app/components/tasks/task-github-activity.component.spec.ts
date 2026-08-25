@@ -305,6 +305,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 1,
       pullRequests: 1,
       linksCreated: 1,
+      tasksTransitioned: 0,
       failures: [],
     });
 
@@ -330,6 +331,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 0,
       pullRequests: 0,
       linksCreated: 0,
+      tasksTransitioned: 0,
       failures: [{ repositoryFullName: 'rigon-org/api', reason: 'GitHub returned 404.' }],
     });
 
@@ -381,6 +383,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 0,
       pullRequests: 0,
       linksCreated: 0,
+      tasksTransitioned: 0,
       failures: [],
     });
     await fixture.whenStable();
@@ -407,6 +410,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 0,
       pullRequests: 0,
       linksCreated: 0,
+      tasksTransitioned: 0,
       failures: [
         { repositoryFullName: 'rigon-org/api', reason: 'Commits listing failed.', branch: 'TS-42-fix' },
         { repositoryFullName: 'rigon-org/web', reason: 'GitHub returned 404.', branch: null },
@@ -458,6 +462,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 0,
       pullRequests: 0,
       linksCreated: 0,
+      tasksTransitioned: 0,
       failures: [],
     });
     await fixture.whenStable();
@@ -487,6 +492,7 @@ describe('TaskGitHubActivityComponent', () => {
       branches: 0,
       pullRequests: 0,
       linksCreated: 0,
+      tasksTransitioned: 0,
       failures: [{ repositoryFullName: 'rigon-org/api', reason: 'GitHub returned 404.' }],
     });
     await fixture.whenStable();
@@ -560,5 +566,62 @@ describe('TaskGitHubActivityComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.showBranchDialog()).toBe(false);
+  });
+
+  it('says how many tasks the sync moved to Done', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      // Deliberately different from tasksTransitioned: with both at 3, asserting that "3"
+      // appears somewhere would pass without the count being rendered at all.
+      pullRequests: 5,
+      linksCreated: 5,
+      tasksTransitioned: 3,
+      failures: [],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The number next to its own label, not merely present on the page.
+    const banner = host(fixture).querySelector('[data-transitioned]')!;
+    expect(banner.textContent).toContain('3 tasks moved to Done');
+  });
+
+  it('says nothing about transitions when the sync moved none', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      tasksTransitioned: 0,
+      failures: [],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // "0 tasks moved to Done" is noise on every ordinary sync.
+    expect(host(fixture).querySelector('[data-transitioned]')).toBeNull();
   });
 });

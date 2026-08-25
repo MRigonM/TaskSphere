@@ -21,6 +21,17 @@
     </button>
   </div>
 
+
+  <!-- Only after a sync that moved something. A transition is otherwise invisible: the task
+       simply changes column, with nothing saying why. -->
+  <div
+    *ngIf="tasksTransitioned() as moved"
+    data-transitioned
+    class="rounded-lg bg-emerald-500/10 text-emerald-200 px-3 py-2 text-xs"
+  >
+    {{ moved }} {{ moved === 1 ? 'task' : 'tasks' }} moved to Done by a merged pull request
+  </div>
+
   <!-- "Some data" rather than "some repositories", revised 2026-08-19: under branch-level
        partial success a repository can be fully synced except for one branch's commits, and
        the old wording read as a bigger failure than it was. The branch is rendered when the

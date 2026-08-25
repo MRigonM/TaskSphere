@@ -7,6 +7,7 @@ export interface ProjectDto {
   id: number;
   name: string;
   key: string;
+  autoDoneOnMerge: boolean;
 }
 
 export interface AddMemberDto {

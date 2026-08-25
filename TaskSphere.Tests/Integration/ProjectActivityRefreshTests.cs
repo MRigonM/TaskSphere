@@ -590,4 +590,39 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         Assert.False(result.IsSuccess);
         Assert.Empty(api.Calls);
     }
+
+    [Fact]
+    public async SystemTask.Task A_repository_whose_listing_fails_does_not_stamp_its_cooldown()
+    {
+        var api = new FakeGitHubApiClient { Fail = true };
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
+
+        await using var check = NewContext();
+        var repository = await check.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+
+        // Otherwise a single failure buys a minute of silence it never earned, and the next
+        // board load cannot retry.
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_failed_listing_leaves_the_board_answerable_rather_than_throwing()
+    {
+        var api = new FakeGitHubApiClient { Fail = true };
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // GitHub being down is an ordinary outcome for a background refresh, not an error the
+        // caller must handle: the board renders either way.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, result.Value!.TasksTransitioned);
+    }
 }

@@ -112,4 +112,16 @@ public class GitHubDependencyInjectionTests
 
         Assert.NotNull(controller);
     }
+
+    [Fact]
+    public void MergeTransitionService_resolves()
+    {
+        using var provider = BuildProvider();
+        using var scope = provider.CreateScope();
+
+        var service = scope.ServiceProvider.GetService<IMergeTransitionService>();
+
+        Assert.NotNull(service);
+        Assert.IsType<TaskSphere.Infrastructure.Services.MergeTransitionService>(service);
+    }
 }

@@ -11,5 +11,8 @@ namespace TaskSphere.Application.Interfaces;
 /// </summary>
 public interface IGitHubActivitySyncService
 {
-    Task<Result<SyncActivityResultDto>> SyncCompanyAsync(Guid companyId, CancellationToken cancellationToken = default);
+    Task<Result<SyncActivityResultDto>> SyncCompanyAsync(
+        Guid companyId,
+        string? actorUsername,
+        CancellationToken cancellationToken = default);
 }

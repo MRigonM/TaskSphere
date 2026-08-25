@@ -1,3 +1,4 @@
+using TaskSphere.Domain.Audit;
 using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
@@ -206,7 +207,12 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var uow = new UnitOfWork(db);
         var resolver = new GitHubTaskLinkResolver(uow);
 
-        return await new GitHubActivitySyncService(api, uow, resolver).SyncCompanyAsync(_companyId);
+        // A real transition service, not a fake: it reads the same mirror this sync just
+        // wrote, and nothing in these tests seeds a merged pull request with a null marker.
+        var transitions = new MergeTransitionService(uow, new AuditQueue());
+
+        return await new GitHubActivitySyncService(api, uow, resolver, transitions)
+            .SyncCompanyAsync(_companyId, "rigon");
     }
 
     // ---- tests ---------------------------------------------------------------------------

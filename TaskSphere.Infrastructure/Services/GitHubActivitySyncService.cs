@@ -28,18 +28,24 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
     private readonly IGitHubApiClient _apiClient;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGitHubTaskLinkResolver _resolver;
+    private readonly IMergeTransitionService _mergeTransitions;
 
     public GitHubActivitySyncService(
         IGitHubApiClient apiClient,
         IUnitOfWork unitOfWork,
-        IGitHubTaskLinkResolver resolver)
+        IGitHubTaskLinkResolver resolver,
+        IMergeTransitionService mergeTransitions)
     {
         _apiClient = apiClient;
         _unitOfWork = unitOfWork;
         _resolver = resolver;
+        _mergeTransitions = mergeTransitions;
     }
 
-    public async Task<Result<SyncActivityResultDto>> SyncCompanyAsync(Guid companyId, CancellationToken cancellationToken = default)
+    public async Task<Result<SyncActivityResultDto>> SyncCompanyAsync(
+        Guid companyId,
+        string? actorUsername,
+        CancellationToken cancellationToken = default)
     {
         var installation = await _unitOfWork.GitHubInstallations.GetByCompanyAsync(companyId, cancellationToken);
 
@@ -109,6 +115,10 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
         var resolution = await _resolver.ResolveAsync(companyId, cancellationToken);
 
+        // After the pull-request upsert, so State is current. Independent of the resolver: the
+        // transition reads head branches, not TaskLink rows.
+        var transitions = await _mergeTransitions.ApplyAsync(companyId, actorUsername, cancellationToken);
+
         if (synced > 0)
         {
             installation.ActivitySyncedAtUtc = DateTime.UtcNow;
@@ -124,6 +134,7 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             Branches: branchCount,
             PullRequests: pullCount,
             LinksCreated: resolution.LinksCreated,
+            TasksTransitioned: transitions.Value?.Transitioned ?? 0,
             Failures: failures));
     }
 

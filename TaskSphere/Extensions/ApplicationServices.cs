@@ -99,6 +99,7 @@ public static class ApplicationServices
         services.AddScoped<IGitHubProjectLinkService, GitHubProjectLinkService>();
         services.AddScoped<IGitHubTaskLinkResolver, GitHubTaskLinkResolver>();
         services.AddScoped<IGitHubActivitySyncService, GitHubActivitySyncService>();
+        services.AddScoped<IMergeTransitionService, MergeTransitionService>();
         services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
         services.AddScoped<IGitHubBranchService, GitHubBranchService>();
 

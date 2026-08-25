@@ -15,6 +15,7 @@ public record SyncActivityResultDto(
     int Branches,
     int PullRequests,
     int LinksCreated,
+    int TasksTransitioned,
     IReadOnlyList<SyncFailureDto> Failures);
 
 public record TaskCommitDto(

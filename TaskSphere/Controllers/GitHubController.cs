@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Application.Interfaces;
@@ -124,7 +125,10 @@ public class GitHubController : ApiBaseController
     [HttpPost("activity/sync")]
     public async Task<IActionResult> SyncActivity(CancellationToken ct)
     {
-        var result = await _activitySyncService.SyncCompanyAsync(CompanyId, ct);
+        // The same claim AuditAttribute records, so the transition entries this sync writes
+        // name the actor the surrounding audit entry names.
+        var actor = User.FindFirst(ClaimTypes.Name)?.Value;
+        var result = await _activitySyncService.SyncCompanyAsync(CompanyId, actor, ct);
         return FromResult(result);
     }
 }

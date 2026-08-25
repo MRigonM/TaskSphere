@@ -288,7 +288,7 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
 
         // DECOY TASK ROWS — Tasks must not collide with repositories or projects on identity.
         // Eight decoys on a decoy project (Decoy A, id 1) ensure the real task starts after all
-        // project ids (1-5) and repository ids (6-7).
+        // project ids (1-5) and repository ids (1-13).
         db.Set<TaskEntity>().AddRange(
             new TaskEntity
             {
@@ -432,5 +432,98 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         var repository = await check.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
 
         Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_second_refresh_inside_the_window_makes_no_call()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using (var first = NewContext())
+            await NewService(first, api).RefreshAsync(
+                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.Single(api.Calls);
+
+        await using var second = NewContext();
+        var result = await NewService(second, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // The whole point of the cooldown: five people opening boards in the same minute cost
+        // one call, not five.
+        Assert.Single(api.Calls);
+        Assert.False(result.Value!.Refreshed);
+        Assert.Equal(0, result.Value.RepositoriesRefreshed);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_refresh_past_the_window_calls_again()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using (var first = NewContext())
+            await NewService(first, api).RefreshAsync(
+                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // Age the stamp rather than waiting a minute in a test.
+        await using (var age = NewContext())
+        {
+            var repository = await age.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+            repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-5);
+            await age.SaveChangesAsync();
+        }
+
+        await using var second = NewContext();
+        var result = await NewService(second, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.Equal(2, api.Calls.Count);
+        Assert.True(result.Value!.Refreshed);
+    }
+
+    [Fact]
+    public async SystemTask.Task An_opted_out_project_costs_no_github_call_at_all()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _optOutProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
+        // Asserted on the client's call list, not just the counts: the point of skipping early
+        // is that the rate limit is never spent where it cannot buy anything.
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_project_with_no_linked_repository_costs_no_github_call()
+    {
+        var api = new FakeGitHubApiClient();
+
+        int unlinkedProjectId;
+        await using (var seed = NewContext())
+        {
+            var unlinked = new Project
+            {
+                Name = "Unlinked",
+                Key = "UL",
+                CompanyId = _companyId,
+                AutoDoneOnMerge = true,
+            };
+            seed.Projects.Add(unlinked);
+            await seed.SaveChangesAsync();
+            unlinkedProjectId = unlinked.Id;
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, unlinkedProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // The toggle being on is not enough: with nothing linked there is nothing to fetch.
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
+        Assert.Empty(api.Calls);
     }
 }

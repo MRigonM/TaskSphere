@@ -133,25 +133,20 @@ describe('SprintsPageComponent — a sync that moved tasks', () => {
 });
 
 describe('SprintsPageComponent — GitHub refresh on load', () => {
-  it('re-reads the board on init when the refresh moved something', async () => {
-    // This test proves the binding from init all the way through to the re-read, by
-    // configuring the mock BEFORE setup runs with tasksTransitioned > 0.
+  it('fires the refresh call on init when the project loads', async () => {
+    // This test proves refreshGitHubActivity() is wired into ngOnInit and fires when the project
+    // id resolves. It does NOT assert a re-read count because the refresh resolves before
+    // loadSprints completes and selectSprint is called — selectedSprint() is null at that moment,
+    // so the conditional branch inside refreshGitHubActivity never triggers loadBoard. Instead,
+    // the board is loaded once through the normal path (loadSprints → selectSprint → loadBoard),
+    // and that single load already carries any transitions the server applied during refresh.
+    // The re-read branch is pinned by the direct-call test 're-reads the board when the refresh
+    // moved something', which shows it failing under the mutation `if (false)`.
     localStorage.setItem(
       'tasksphere_auth',
       JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
     );
 
-    const boardFn = vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress')));
-
-    // Capture the board call count BEFORE creating the component
-    const callCountBeforeInit = boardFn.mock.calls.length;
-
-    const api = {
-      board: boardFn,
-      getByProject: vi.fn().mockReturnValue(of([sprint])),
-    };
-
-    // Key: configure it to return tasksTransitioned > 0 BEFORE component creation.
     const projectsApi = {
       getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
       getMembers: vi.fn().mockReturnValue(of([])),
@@ -163,7 +158,7 @@ describe('SprintsPageComponent — GitHub refresh on load', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: SprintsApiService, useValue: api },
+        { provide: SprintsApiService, useValue: { board: vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress'))), getByProject: vi.fn().mockReturnValue(of([sprint])) } },
         {
           provide: TasksApiService,
           useValue: {
@@ -188,10 +183,8 @@ describe('SprintsPageComponent — GitHub refresh on load', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    // After full init, refreshGitHub should have been called
+    // Verify the wiring: refreshGitHub is called with the project id during init
     expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
-    // Board should have been loaded at least once more than before init (via selectSprint in loadSprints)
-    expect(boardFn.mock.calls.length).toBeGreaterThan(callCountBeforeInit);
   });
 
   it('refreshes GitHub once when the project loads', async () => {

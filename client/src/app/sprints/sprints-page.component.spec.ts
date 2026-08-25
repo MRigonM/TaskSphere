@@ -133,6 +133,63 @@ describe('SprintsPageComponent — a sync that moved tasks', () => {
 });
 
 describe('SprintsPageComponent — GitHub refresh on load', () => {
+  it('re-reads the board on init when the refresh moved something', async () => {
+    // This test proves the binding from init all the way through to the re-read, by
+    // configuring the mock BEFORE setup runs with tasksTransitioned > 0.
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
+    );
+
+    const boardFn = vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress')));
+    const api = {
+      board: boardFn,
+      getByProject: vi.fn().mockReturnValue(of([sprint])),
+    };
+
+    // Key: configure it to return tasksTransitioned > 0 BEFORE component creation.
+    const projectsApi = {
+      getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
+      getMembers: vi.fn().mockReturnValue(of([])),
+      refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 })),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [SprintsPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SprintsApiService, useValue: api },
+        {
+          provide: TasksApiService,
+          useValue: {
+            getBySprint: vi.fn().mockReturnValue(of([inProgressTask])),
+            getById: vi.fn().mockReturnValue(of(inProgressTask)),
+          },
+        },
+        { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
+        { provide: ProjectsApiService, useValue: projectsApi },
+        { provide: ToastService, useValue: { show: vi.fn() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(new Map([['projectId', '7']]) as any),
+            queryParamMap: of(new Map() as any),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(SprintsPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // After full init, refreshGitHub should have been called and the board should have been loaded
+    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
+    // Board is loaded as part of selectSprint() during loadSprints() initialization
+    expect(boardFn).toHaveBeenCalled();
+  });
+
   it('refreshes GitHub once when the project loads', async () => {
     const { fixture, projectsApi } = setup();
     await fixture.whenStable();

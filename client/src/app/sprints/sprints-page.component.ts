@@ -101,6 +101,8 @@ export class SprintsPageComponent {
           },
         });
       }
+
+      this.refreshGitHubActivity();
     });
 
     this.route.queryParamMap.subscribe(qp => {
@@ -118,7 +120,6 @@ export class SprintsPageComponent {
 
     this.loadProjectMembers();
     this.loadSprints(true);
-    this.refreshGitHubActivity();
   }
 
   openTaskDetails(t: any) {

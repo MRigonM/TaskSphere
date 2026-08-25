@@ -142,6 +142,10 @@ describe('SprintsPageComponent — GitHub refresh on load', () => {
     );
 
     const boardFn = vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress')));
+
+    // Capture the board call count BEFORE creating the component
+    const callCountBeforeInit = boardFn.mock.calls.length;
+
     const api = {
       board: boardFn,
       getByProject: vi.fn().mockReturnValue(of([sprint])),
@@ -184,10 +188,10 @@ describe('SprintsPageComponent — GitHub refresh on load', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    // After full init, refreshGitHub should have been called and the board should have been loaded
+    // After full init, refreshGitHub should have been called
     expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
-    // Board is loaded as part of selectSprint() during loadSprints() initialization
-    expect(boardFn).toHaveBeenCalled();
+    // Board should have been loaded at least once more than before init (via selectSprint in loadSprints)
+    expect(boardFn.mock.calls.length).toBeGreaterThan(callCountBeforeInit);
   });
 
   it('refreshes GitHub once when the project loads', async () => {

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Application.Interfaces;
@@ -13,10 +14,14 @@ namespace TaskSphere.Controllers;
 public class ProjectsController : ApiBaseController
 {
     private readonly IProjectService _projectService;
+    private readonly IProjectActivityRefreshService _activityRefresh;
 
-    public ProjectsController(IProjectService projectService)
+    public ProjectsController(
+        IProjectService projectService,
+        IProjectActivityRefreshService activityRefresh)
     {
         _projectService = projectService;
+        _activityRefresh = activityRefresh;
     }
 
     [Audit("Created a project")]
@@ -89,6 +94,20 @@ public class ProjectsController : ApiBaseController
     public async Task<IActionResult> RemoveMember(int projectId, string userId, CancellationToken ct)
     {
         var result = await _projectService.RemoveMemberAsync(CompanyId, projectId, userId, ct);
+        return FromResult(result);
+    }
+
+    /// <summary>
+    /// Refreshes this project's pull requests and applies any merge → Done transitions. Fired
+    /// by opening a board or a backlog, so it is reachable by members: the repository↔project
+    /// link is what authorizes it. Not audited — see ProjectActivityRefreshEndpointTests.
+    /// </summary>
+    [HttpPost("{projectId:int}/github-refresh")]
+    public async Task<IActionResult> RefreshGitHub(int projectId, CancellationToken ct)
+    {
+        var result = await _activityRefresh.RefreshAsync(
+            CompanyId, projectId, UserId, IsCompanyAdmin, User.FindFirst(ClaimTypes.Name)?.Value, ct);
+
         return FromResult(result);
     }
 }

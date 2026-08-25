@@ -124,4 +124,16 @@ public class GitHubDependencyInjectionTests
         Assert.NotNull(service);
         Assert.IsType<TaskSphere.Infrastructure.Services.MergeTransitionService>(service);
     }
+
+    [Fact]
+    public void ProjectActivityRefreshService_resolves()
+    {
+        using var provider = BuildProvider();
+        using var scope = provider.CreateScope();
+
+        var service = scope.ServiceProvider.GetService<IProjectActivityRefreshService>();
+
+        Assert.NotNull(service);
+        Assert.IsType<TaskSphere.Infrastructure.Services.ProjectActivityRefreshService>(service);
+    }
 }

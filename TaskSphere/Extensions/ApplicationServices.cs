@@ -100,9 +100,10 @@ public static class ApplicationServices
         services.AddScoped<IGitHubTaskLinkResolver, GitHubTaskLinkResolver>();
         services.AddScoped<IGitHubActivitySyncService, GitHubActivitySyncService>();
         services.AddScoped<IMergeTransitionService, MergeTransitionService>();
+        services.AddScoped<IGitHubBranchService, GitHubBranchService>();
+        services.AddScoped<IProjectActivityRefreshService, ProjectActivityRefreshService>();
         services.AddScoped<GitHubPullRequestMirror>();
         services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
-        services.AddScoped<IGitHubBranchService, GitHubBranchService>();
 
         services.AddHttpClient<IGitHubTokenService, GitHubTokenService>(ConfigureGitHubApiClient);
         services.AddHttpClient<IGitHubApiClient, GitHubApiClient>(ConfigureGitHubApiClient);

@@ -46,4 +46,17 @@ describe('ProjectsApiService', () => {
 
     req.flush({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: false });
   });
+
+  it('posts a refresh for one project', () => {
+    const { service, http } = setup();
+
+    service.refreshGitHub(7).subscribe();
+
+    const req = http.expectOne(`${environment.apiUrl}Projects/7/github-refresh`);
+    expect(req.request.method).toBe('POST');
+    // No body: the project id is the whole request.
+    expect(req.request.body).toEqual({});
+
+    req.flush({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 1 });
+  });
 });

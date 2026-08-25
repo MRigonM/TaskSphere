@@ -21,3 +21,9 @@ export interface MemberDto {
   userName: string;
   email: string;
 }
+
+export interface ProjectActivityRefreshDto {
+  refreshed: boolean;
+  repositoriesRefreshed: number;
+  tasksTransitioned: number;
+}

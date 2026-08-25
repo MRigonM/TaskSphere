@@ -149,6 +149,7 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         await db.SaveChangesAsync();
 
         // DECOY REPOSITORY ROWS — Repositories must not collide with projects or tasks on identity.
+        // Eleven decoys ensure real repositories start well beyond all project ids (1-5) and task ids.
         db.GitHubRepositories.AddRange(
             new GitHubRepository
             {
@@ -164,6 +165,78 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
                 GitHubInstallationId = installation.Id,
                 CompanyId = _companyId,
                 FullName = "rigon-org/decoy-2",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12003,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-3",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12004,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-4",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12005,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-5",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12006,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-6",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12007,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-7",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12008,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-8",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12009,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-9",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12010,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-10",
+                DefaultBranch = "main",
+            },
+            new GitHubRepository
+            {
+                RepositoryId = 12011,
+                GitHubInstallationId = installation.Id,
+                CompanyId = _companyId,
+                FullName = "rigon-org/decoy-11",
                 DefaultBranch = "main",
             });
         await db.SaveChangesAsync();
@@ -214,12 +287,14 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         await db.SaveChangesAsync();
 
         // DECOY TASK ROWS — Tasks must not collide with repositories or projects on identity.
+        // Eight decoys on a decoy project (Decoy A, id 1) ensure the real task starts after all
+        // project ids (1-5) and repository ids (6-7).
         db.Set<TaskEntity>().AddRange(
             new TaskEntity
             {
                 Title = "Decoy Task 1",
                 Number = 1,
-                ProjectId = _tsProjectId,
+                ProjectId = 1,  // Decoy A project
                 CompanyId = _companyId,
                 Status = TaskStatuses.InProgress,
             },
@@ -227,7 +302,55 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             {
                 Title = "Decoy Task 2",
                 Number = 2,
-                ProjectId = _tsProjectId,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 3",
+                Number = 3,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 4",
+                Number = 4,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 5",
+                Number = 5,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 6",
+                Number = 6,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 7",
+                Number = 7,
+                ProjectId = 1,  // Decoy A project
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            },
+            new TaskEntity
+            {
+                Title = "Decoy Task 8",
+                Number = 8,
+                ProjectId = 1,  // Decoy A project
                 CompanyId = _companyId,
                 Status = TaskStatuses.InProgress,
             });
@@ -244,6 +367,26 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         db.Set<TaskEntity>().AddRange(ts42);
         await db.SaveChangesAsync();
         _ts42TaskId = ts42.Id;
+
+        // SELF-CHECK: Verify the 5 fixture ids are pairwise distinct. This catches bugs where decoy
+        // rows fail to offset identity seeds, allowing a lookup using the wrong entity id to
+        // resolve correctly by accident. E.g., if _apiRepositoryId (3) == _ts42TaskId (3), a bug
+        // that passed a repository id where a task id belongs would still find the correct row.
+        var fixtureIds = new[] { _tsProjectId, _optOutProjectId, _apiRepositoryId, _webRepositoryId, _ts42TaskId };
+        var uniqueIds = new HashSet<int>(fixtureIds);
+        if (uniqueIds.Count != fixtureIds.Length)
+        {
+            var duplicates = fixtureIds
+                .GroupBy(x => x)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+            throw new InvalidOperationException(
+                $"Fixture id collision: {string.Join(", ", duplicates)} appear in multiple fixture variables. " +
+                $"_tsProjectId={_tsProjectId}, _optOutProjectId={_optOutProjectId}, " +
+                $"_apiRepositoryId={_apiRepositoryId}, _webRepositoryId={_webRepositoryId}, " +
+                $"_ts42TaskId={_ts42TaskId}");
+        }
     }
 
     public SystemTask.Task DisposeAsync() => SystemTask.Task.CompletedTask;

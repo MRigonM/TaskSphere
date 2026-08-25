@@ -34,37 +34,66 @@ public class ProjectActivityRefreshModelTests : IAsyncLifetime
     [Fact]
     public async SystemTask.Task A_new_repository_has_never_been_refreshed()
     {
-        await using var db = NewContext();
+        Guid companyId;
+        int installationId;
+        int repositoryId;
 
-        var company = new Company { Name = "Cooldown Co" };
-        db.Companies.Add(company);
-        await db.SaveChangesAsync();
-
-        var installation = new GitHubInstallation
+        // Write through a fresh context
+        await using (var db = NewContext())
         {
-            InstallationId = 11001,
-            CompanyId = company.Id,
-            AccountLogin = "rigon-org",
-            AccountType = "Organization",
-            RepositorySelection = RepositorySelection.All,
-        };
-        db.GitHubInstallations.Add(installation);
-        await db.SaveChangesAsync();
+            var company = new Company { Name = "Cooldown Co" };
+            db.Companies.Add(company);
+            await db.SaveChangesAsync();
+            companyId = company.Id;
 
-        var repository = new GitHubRepository
+            var installation = new GitHubInstallation
+            {
+                InstallationId = 11001,
+                CompanyId = company.Id,
+                AccountLogin = "rigon-org",
+                AccountType = "Organization",
+                RepositorySelection = RepositorySelection.All,
+            };
+            db.GitHubInstallations.Add(installation);
+            await db.SaveChangesAsync();
+            installationId = installation.Id;
+
+            var repository = new GitHubRepository
+            {
+                RepositoryId = 11101,
+                GitHubInstallationId = installation.Id,
+                CompanyId = company.Id,
+                FullName = "rigon-org/api",
+                DefaultBranch = "main",
+            };
+            db.GitHubRepositories.Add(repository);
+            await db.SaveChangesAsync();
+            repositoryId = repository.Id;
+        } // Context disposed; forces a fresh read
+
+        // Read back through a separate fresh context — must be null
+        await using (var db = NewContext())
         {
-            RepositoryId = 11101,
-            GitHubInstallationId = installation.Id,
-            CompanyId = company.Id,
-            FullName = "rigon-org/api",
-            DefaultBranch = "main",
-        };
-        db.GitHubRepositories.Add(repository);
-        await db.SaveChangesAsync();
+            var reloaded = await db.GitHubRepositories.SingleAsync(r => r.Id == repositoryId);
+            Assert.Null(reloaded.PullRequestsRefreshedAtUtc);
+        }
 
-        var reloaded = await db.GitHubRepositories.SingleAsync(r => r.Id == repository.Id);
+        // Positive case: stamp a specific datetime, save, and read back through fresh context
+        var testTimestamp = new DateTime(2026, 8, 25, 10, 30, 45, DateTimeKind.Utc);
+        await using (var db = NewContext())
+        {
+            var repository = await db.GitHubRepositories.SingleAsync(r => r.Id == repositoryId);
+            repository.PullRequestsRefreshedAtUtc = testTimestamp;
+            await db.SaveChangesAsync();
+        } // Context disposed
 
-        Assert.Null(reloaded.PullRequestsRefreshedAtUtc);
+        // Read stamped value through fresh context — must equal the timestamp
+        await using (var db = NewContext())
+        {
+            var reloaded = await db.GitHubRepositories.SingleAsync(r => r.Id == repositoryId);
+            Assert.NotNull(reloaded.PullRequestsRefreshedAtUtc);
+            Assert.Equal(testTimestamp, reloaded.PullRequestsRefreshedAtUtc);
+        }
     }
 
     [Fact]

@@ -101,6 +101,7 @@ export class TasksPageComponent {
       }
 
       this.reloadAll();
+      this.refreshGitHubActivity();
     });
 
     this.route.queryParamMap.subscribe(qp => {
@@ -142,6 +143,28 @@ export class TasksPageComponent {
    */
   onTasksMovedBySync() {
     this.refreshTasks();
+  }
+
+  /**
+   * Fired once per project load. Refreshes this project's pull requests and applies any merge →
+   * Done transitions, then re-reads only if something actually moved.
+   *
+   * Failures are swallowed deliberately: the user did not ask for this call, GitHub being slow
+   * or unreachable must not delay or break a board, and the manual Sync button is still the
+   * visible, diagnosable path.
+   */
+  refreshGitHubActivity() {
+    const pid = this.projectId();
+    if (!pid) return;
+
+    this.projectsApi.refreshGitHub(pid)
+      .pipe(
+        tap((result) => {
+          if (result?.tasksTransitioned > 0) this.refreshTasks();
+        }),
+        catchError(() => of(null)),
+      )
+      .subscribe();
   }
 
   private refreshTasks() {

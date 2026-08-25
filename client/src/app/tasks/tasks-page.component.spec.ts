@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { TasksPageComponent } from './tasks-page.component';
 import { TasksApiService } from '../core/services/tasks-api.service';
@@ -32,6 +32,12 @@ function setup() {
     getById: vi.fn().mockReturnValue(of(openTask)),
   };
 
+  const projectsApi = {
+    getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
+    getMembers: vi.fn().mockReturnValue(of([])),
+    refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0 })),
+  };
+
   TestBed.configureTestingModule({
     imports: [TasksPageComponent],
     providers: [
@@ -42,7 +48,7 @@ function setup() {
       { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
       {
         provide: ProjectsApiService,
-        useValue: { getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })) },
+        useValue: projectsApi,
       },
       { provide: ToastService, useValue: { show: vi.fn() } },
       {
@@ -58,7 +64,7 @@ function setup() {
   const fixture = TestBed.createComponent(TasksPageComponent);
   fixture.detectChanges();
 
-  return { fixture, tasksApi };
+  return { fixture, tasksApi, projectsApi };
 }
 
 describe('TasksPageComponent — a sync that moved tasks', () => {
@@ -109,6 +115,56 @@ describe('TasksPageComponent — a sync that moved tasks', () => {
     // Unlike `saved`, which the modal pairs with `closed`, this fires while the user is still
     // reading the activity tab.
     expect(fixture.componentInstance.showTaskDetails()).toBe(true);
+  });
+});
+
+describe('TasksPageComponent — GitHub refresh on load', () => {
+  it('refreshes GitHub once when the project loads', async () => {
+    const { fixture, projectsApi } = setup();
+    await fixture.whenStable();
+
+    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
+    expect(projectsApi.refreshGitHub.mock.calls.length).toBe(1);
+  });
+
+  it('re-reads the backlog when the refresh moved something', async () => {
+    const { fixture, tasksApi, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(
+      of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 }),
+    );
+
+    const readsBefore = tasksApi.getBacklog.mock.calls.length;
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+
+    expect(tasksApi.getBacklog.mock.calls.length).toBe(readsBefore + 1);
+  });
+
+  it('does not re-read when the refresh moved nothing', async () => {
+    const { fixture, tasksApi, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(
+      of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0 }),
+    );
+
+    const readsBefore = tasksApi.getBacklog.mock.calls.length;
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+
+    expect(tasksApi.getBacklog.mock.calls.length).toBe(readsBefore);
+  });
+
+  it('says nothing when the refresh fails', async () => {
+    const { fixture, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(throwError(() => ({ status: 500 })));
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The user did not ask for this call. A banner about it reads as a broken board.
+    expect(fixture.componentInstance.error()).toBeNull();
   });
 
   afterEach(() => {

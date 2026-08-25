@@ -133,64 +133,20 @@ describe('SprintsPageComponent — a sync that moved tasks', () => {
 });
 
 describe('SprintsPageComponent — GitHub refresh on load', () => {
-  it('fires the refresh call on init when the project loads', async () => {
-    // This test proves refreshGitHubActivity() is wired into ngOnInit and fires when the project
-    // id resolves. It does NOT assert a re-read count because the refresh resolves before
-    // loadSprints completes and selectSprint is called — selectedSprint() is null at that moment,
-    // so the conditional branch inside refreshGitHubActivity never triggers loadBoard. Instead,
-    // the board is loaded once through the normal path (loadSprints → selectSprint → loadBoard),
-    // and that single load already carries any transitions the server applied during refresh.
-    // The re-read branch is pinned by the direct-call test 're-reads the board when the refresh
-    // moved something', which shows it failing under the mutation `if (false)`.
-    localStorage.setItem(
-      'tasksphere_auth',
-      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
-    );
-
-    const projectsApi = {
-      getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
-      getMembers: vi.fn().mockReturnValue(of([])),
-      refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 })),
-    };
-
-    TestBed.configureTestingModule({
-      imports: [SprintsPageComponent],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: SprintsApiService, useValue: { board: vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress'))), getByProject: vi.fn().mockReturnValue(of([sprint])) } },
-        {
-          provide: TasksApiService,
-          useValue: {
-            getBySprint: vi.fn().mockReturnValue(of([inProgressTask])),
-            getById: vi.fn().mockReturnValue(of(inProgressTask)),
-          },
-        },
-        { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
-        { provide: ProjectsApiService, useValue: projectsApi },
-        { provide: ToastService, useValue: { show: vi.fn() } },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            paramMap: of(new Map([['projectId', '7']]) as any),
-            queryParamMap: of(new Map() as any),
-          },
-        },
-      ],
-    });
-
-    const fixture = TestBed.createComponent(SprintsPageComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    // Verify the wiring: refreshGitHub is called with the project id during init
-    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
-  });
-
   it('refreshes GitHub once when the project loads', async () => {
     const { fixture, projectsApi } = setup();
     await fixture.whenStable();
 
+    // Here paramMap and refreshGitHub are both synchronous (`of(...)`), so the whole
+    // refreshGitHubActivity() tap runs to completion before loadSprints(true) is reached —
+    // selectedSprint() is still null at that point, so the re-read branch does not fire in this
+    // test. That ordering is a property of this test's synchronous doubles, not of production:
+    // refreshGitHub is an HTTP call that round-trips to GitHub, while loadSprints hits a local
+    // DB-backed endpoint, so in the app the sprint is quite likely already selected by the time
+    // the refresh resolves. Both orderings are correct: if the sprint is already selected, the
+    // branch re-reads the board; if it is not, the board load that follows already carries any
+    // transitions, since the server applied them before responding. The re-read branch itself is
+    // pinned by 're-reads the board when the refresh moved something' below.
     expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
     expect(projectsApi.refreshGitHub.mock.calls.length).toBe(1);
   });

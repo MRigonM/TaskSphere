@@ -8,11 +8,14 @@ import { of, throwError } from 'rxjs';
 import { ProjectPageComponent } from './project-page.component';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { ProjectDto } from '../../core/models/projects.models';
 
 const project: ProjectDto = { id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: false };
 
 function setup(current: ProjectDto = project) {
+  const toast = { show: vi.fn() };
+
   const projectsApi = {
     getAll: vi.fn().mockReturnValue(of([current])),
     getMembers: vi.fn().mockReturnValue(of([])),
@@ -26,6 +29,7 @@ function setup(current: ProjectDto = project) {
       provideHttpClientTesting(),
       { provide: ProjectsApiService, useValue: projectsApi },
       { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
+      { provide: ToastService, useValue: toast },
       {
         provide: ActivatedRoute,
         useValue: { paramMap: of(new Map([['projectId', '7']]) as any) },
@@ -37,7 +41,7 @@ function setup(current: ProjectDto = project) {
     TestBed.createComponent(ProjectPageComponent);
   fixture.detectChanges();
 
-  return { fixture, projectsApi };
+  return { fixture, projectsApi, toast };
 }
 
 function checkbox(fixture: ComponentFixture<ProjectPageComponent>): HTMLInputElement {
@@ -91,5 +95,38 @@ describe('ProjectPageComponent — the auto-done toggle', () => {
     // and the bound signal is unchanged so Angular never corrects it.
     expect(checkbox(harness.fixture).checked).toBe(false);
     expect(harness.fixture.componentInstance.error()).toContain('Failed to update project settings');
+  });
+
+  it('confirms what was turned on, not the opposite', () => {
+    // The two messages are each other's negation, so swapping the branches is invisible
+    // unless a test pins the message to the state it describes. The mutation sweep found
+    // exactly that swap surviving.
+    checkbox(harness.fixture).click();
+    harness.fixture.detectChanges();
+
+    expect(harness.toast.show).toHaveBeenCalledWith(
+      'Merged pull requests will move their task to Done',
+      'info',
+    );
+  });
+
+  it('confirms what was turned off', () => {
+    // beforeEach already instantiated the TestBed for the default project; this test needs
+    // one that starts enabled, so the module is reset before it is reconfigured.
+    TestBed.resetTestingModule();
+
+    const enabled: ProjectDto = { ...project, autoDoneOnMerge: true };
+    const off = setup(enabled);
+    off.projectsApi.updateSettings.mockReturnValue(of({ ...enabled, autoDoneOnMerge: false }));
+
+    expect(checkbox(off.fixture).checked).toBe(true);
+
+    checkbox(off.fixture).click();
+    off.fixture.detectChanges();
+
+    expect(off.toast.show).toHaveBeenCalledWith(
+      'Merged pull requests will no longer move their task',
+      'info',
+    );
   });
 });

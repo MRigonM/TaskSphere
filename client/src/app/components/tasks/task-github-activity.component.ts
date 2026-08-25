@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, Input, OnChanges, signal, SimpleChanges } from '@angular/core';
+import { Component, computed, EventEmitter, inject, Input, OnChanges, Output, signal, SimpleChanges } from '@angular/core';
 import { catchError, finalize, of, tap } from 'rxjs';
 
 import { apiErrorMessage } from '../../core/http/api-error';
@@ -47,6 +47,13 @@ export class TaskGitHubActivityComponent implements OnChanges {
   syncFailures = signal<SyncFailureDto[]>([]);
 
   showBranchDialog = signal(false);
+
+  /**
+   * Raised when a sync moved at least one task to Done. The panel re-reads its own activity,
+   * but the task's status lives on the board behind it — without this the count says a task
+   * moved while the board still shows it in its old column until a page reload.
+   */
+  @Output() tasksMoved = new EventEmitter<void>();
 
   isCompanyAdmin = this.auth.isCompany();
 
@@ -105,6 +112,9 @@ export class TaskGitHubActivityComponent implements OnChanges {
         tap(result => {
           this.syncFailures.set(result.failures);
           this.tasksTransitioned.set(result.tasksTransitioned > 0 ? result.tasksTransitioned : null);
+
+          if (result.tasksTransitioned > 0)
+            this.tasksMoved.emit();
           this.load();
         }),
         catchError(err => {

@@ -624,4 +624,64 @@ describe('TaskGitHubActivityComponent', () => {
     // "0 tasks moved to Done" is noise on every ordinary sync.
     expect(host(fixture).querySelector('[data-transitioned]')).toBeNull();
   });
+
+  it('tells its parent when a sync moved tasks, so the board can re-read them', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    let moved = 0;
+    fixture.componentInstance.tasksMoved.subscribe(() => moved++);
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 1,
+      linksCreated: 0,
+      tasksTransitioned: 1,
+      failures: [],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Without this the panel renders "1 task moved to Done" while the board behind it still
+    // shows the task in its old column, and only a page reload fixes it.
+    expect(moved).toBe(1);
+  });
+
+  it('does not ask the board to re-read when the sync moved nothing', async () => {
+    const { fixture, http } = await setup({ role: 'Company', payload: empty });
+
+    let moved = 0;
+    fixture.componentInstance.tasksMoved.subscribe(() => moved++);
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-sync]')!.click();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}GitHub/activity/sync`).flush({
+      repositoriesSynced: 1,
+      commits: 0,
+      branches: 0,
+      pullRequests: 0,
+      linksCreated: 0,
+      tasksTransitioned: 0,
+      failures: [],
+    });
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(moved).toBe(0);
+  });
 });

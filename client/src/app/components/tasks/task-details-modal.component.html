@@ -159,6 +159,7 @@
       #activity
       [taskId]="task.id"
       [hidden]="activeTab() !== 'activity'"
+      (tasksMoved)="tasksMoved.emit()"
     ></app-task-github-activity>
   </div>
 </div>

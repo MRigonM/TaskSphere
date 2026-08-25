@@ -24,6 +24,13 @@ export class TaskDetailsModalComponent {
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<void>();
 
+  /**
+   * Not `saved` — that means the user pressed Save, and the modal pairs it with `closed`.
+   * This one fires while the modal stays open: a sync moved this or another task, and the
+   * board behind needs to re-read.
+   */
+  @Output() tasksMoved = new EventEmitter<void>();
+
   loading = signal(false);
   error = signal<string | null>(null);
 

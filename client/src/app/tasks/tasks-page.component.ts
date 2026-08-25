@@ -132,6 +132,19 @@ export class TasksPageComponent {
   }
 
   onTaskDetailsSaved() {
+    this.refreshTasks();
+  }
+
+  /**
+   * A sync moved at least one task to Done. Unlike a save, the modal stays open — so as well
+   * as re-reading the lists, the open modal has to be re-pointed at the fresh task, or it
+   * keeps showing the status it was opened with.
+   */
+  onTasksMovedBySync() {
+    this.refreshTasks();
+  }
+
+  private refreshTasks() {
     const pid = this.projectId();
 
     this.loading.set(true);
@@ -145,12 +158,26 @@ export class TasksPageComponent {
         return s ? this.tasksApi.getBySprint(s.id) : of([]);
       }),
       tap(tasks => this.sprintTasks.set(tasks ?? [])),
+      tap(() => this.repointSelectedTask()),
       catchError(err => {
         this.error.set(apiErrorMessage(err, 'Failed to refresh tasks.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
     ).subscribe();
+  }
+
+  /**
+   * The lists are replaced wholesale on every reload, so selectedTask keeps pointing at the
+   * object it was opened with. The modal resets its form in ngOnChanges, which fires on a
+   * reference change — without this the reload updates the board and not the modal.
+   */
+  private repointSelectedTask() {
+    const current = this.selectedTask();
+    if (!current) return;
+
+    const fresh = [...this.backlog(), ...this.sprintTasks()].find(t => t.id === current.id);
+    if (fresh) this.selectedTask.set(fresh);
   }
 
   reloadAll() {

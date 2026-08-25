@@ -6,6 +6,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { environment } from '../../../environments/environment';
 import { TaskDetailsModalComponent } from './task-details-modal.component';
 import { TaskGitHubActivityDto } from '../../core/models/github-activity.models';
+import { TaskGitHubActivityComponent } from './task-github-activity.component';
 
 const activity: TaskGitHubActivityDto = {
   commits: [
@@ -145,5 +146,23 @@ describe('TaskDetailsModalComponent tabs', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.activeTab()).toBe('details');
+  });
+
+  it('passes the activity panel tasksMoved on to its own host', async () => {
+    const { fixture } = await setup();
+
+    let moved = 0;
+    fixture.componentInstance.tasksMoved.subscribe(() => moved++);
+
+    // Raised on the real child through the template binding, not by calling a handler on the
+    // modal: the binding is the thing that can go missing.
+    const panel = fixture.debugElement
+      .query((de) => de.componentInstance instanceof TaskGitHubActivityComponent)!
+      .componentInstance as TaskGitHubActivityComponent;
+
+    panel.tasksMoved.emit();
+    fixture.detectChanges();
+
+    expect(moved).toBe(1);
   });
 });

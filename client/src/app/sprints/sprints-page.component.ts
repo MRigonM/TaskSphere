@@ -136,6 +136,33 @@ export class SprintsPageComponent {
     this.loadBoard(s.id);
   }
 
+
+  /**
+   * A sync moved at least one task to Done. Unlike a save, the modal stays open, so the board
+   * is re-read and the open modal is re-pointed at the fresh task — otherwise it keeps showing
+   * the status it was opened with, and only a page reload clears it.
+   */
+  onTasksMovedBySync() {
+    const s = this.selectedSprint();
+    if (!s) return;
+    this.loadBoard(s.id);
+  }
+
+  /**
+   * The board is replaced wholesale on every load, so selectedTask keeps pointing at the
+   * object it was opened with. The modal resets its form in ngOnChanges, which fires on a
+   * reference change.
+   */
+  private repointSelectedTask() {
+    const current = this.selectedTask();
+    const b = this.board();
+    if (!current || !b) return;
+
+    const fresh = [...b.open, ...b.inProgress, ...b.blocked, ...b.done]
+      .find(t => t.id === current.id);
+
+    if (fresh) this.selectedTask.set(fresh);
+  }
   isCompanyAdmin(): boolean {
     return this.auth.isCompany();
   }
@@ -370,7 +397,10 @@ export class SprintsPageComponent {
 
     of(null).pipe(
       switchMap(() => this.loadBoardMerged$(sprintId)),
-      tap((b) => this.board.set(b)),
+      tap((b) => {
+        this.board.set(b);
+        this.repointSelectedTask();
+      }),
       catchError((err) => {
         this.error.set(apiErrorMessage(err, 'Failed to load sprint board.'));
         this.board.set(null);

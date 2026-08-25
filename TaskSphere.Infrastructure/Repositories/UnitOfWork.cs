@@ -66,4 +66,18 @@ public class UnitOfWork : IUnitOfWork
     
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken) => 
         await _context.SaveChangesAsync(cancellationToken);
+
+    public void DiscardPendingChanges()
+    {
+        // Only what is dirty: entities read and left untouched stay tracked, so a caller that
+        // continues after the failure keeps its snapshot. Detaching a Modified entity drops
+        // the write EF would otherwise re-send on the next save.
+        var pending = _context.ChangeTracker
+            .Entries()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .ToList();
+
+        foreach (var entry in pending)
+            entry.State = EntityState.Detached;
+    }
 }

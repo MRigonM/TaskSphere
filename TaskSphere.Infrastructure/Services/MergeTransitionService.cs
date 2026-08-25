@@ -95,6 +95,11 @@ public class MergeTransitionService : IMergeTransitionService
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
+                // Saving per pull request keeps this one's failure off the others' writes, but
+                // EF still holds the rejected entity as Modified: without this, the NEXT pull
+                // request's save re-sends the bad UPDATE and fails too, so one bad row takes
+                // the rest of the pass with it.
+                _unitOfWork.DiscardPendingChanges();
                 failed++;
             }
         }

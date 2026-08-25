@@ -498,4 +498,54 @@ public class MergeTransitionTests : IAsyncLifetime
         Assert.Equal(1, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
     }
+
+    [Fact]
+    public async SystemTask.Task Writes_one_audit_entry_naming_the_task_the_pull_request_and_the_actor()
+    {
+        await AddPullRequest(_apiRepositoryId, 40, "TS-42/add-the-panel");
+
+        var queue = new AuditQueue();
+        await using var db = NewContext();
+        await NewService(db, queue).ApplyAsync(_companyId, "rigon", default);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var entries = new List<AuditEntry>();
+        await foreach (var entry in queue.ReadAllAsync(cts.Token))
+        {
+            entries.Add(entry);
+            break;
+        }
+
+        var written = Assert.Single(entries);
+        Assert.Equal("rigon", written.Username);
+        Assert.Equal(_companyId, written.CompanyId);
+        Assert.Contains("TS-42", written.Action);
+        Assert.Contains("#40", written.Action);
+        // HTTP-shaped fields are empty by design — the dashboard must tolerate this.
+        Assert.Equal("", written.HttpMethod);
+        Assert.Equal(0, written.StatusCode);
+    }
+
+    [Fact]
+    public async SystemTask.Task Writes_no_audit_entry_when_nothing_moved()
+    {
+        await AddPullRequest(_apiRepositoryId, 41, "OO-9/ignore-me");
+
+        var queue = new AuditQueue();
+        await using var db = NewContext();
+        await NewService(db, queue).ApplyAsync(_companyId, "rigon", default);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var count = 0;
+        try
+        {
+            await foreach (var _ in queue.ReadAllAsync(cts.Token))
+                count++;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert.Equal(0, count);
+    }
 }

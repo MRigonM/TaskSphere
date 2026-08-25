@@ -182,6 +182,16 @@ export class AuditDashboardComponent implements OnInit {
     }
   }
 
+
+  /**
+   * An entry with no HTTP method came from inside the app, not from a request: the merge →
+   * Done transition is the first of these. Its method, path, IP, status and duration are all
+   * empty by design, and rendering the zero status through statusClass would paint a
+   * successful transition red.
+   */
+  hasNoRequest(log: AuditLogDto): boolean {
+    return !log.httpMethod;
+  }
   statusClass(code: number): string {
     if (code >= 200 && code < 300)
       return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';

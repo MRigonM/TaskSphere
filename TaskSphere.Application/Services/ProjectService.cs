@@ -66,9 +66,29 @@ public class ProjectService : IProjectService
             return Result<ProjectDto>.Failure("Project key already in use.");
         }
 
-        return Result<ProjectDto>.Success(new ProjectDto(project.Id, project.Name, project.Key));
+        return Result<ProjectDto>.Success(new ProjectDto(project.Id, project.Name, project.Key, project.AutoDoneOnMerge));
     }
 
+
+    public async Task<Result<ProjectDto>> UpdateSettingsAsync(
+        Guid companyId, int projectId, UpdateProjectSettingsDto dto, CancellationToken ct = default)
+    {
+        // Company-scoped through the same query every read uses, so a project in another
+        // company is simply not found rather than being found and refused.
+        var project = await _unitOfWork.Projects
+            .GetCompanyProjects(companyId)
+            .FirstOrDefaultAsync(p => p.Id == projectId, ct);
+
+        if (project is null)
+            return Result<ProjectDto>.Failure("Project not found.");
+
+        project.AutoDoneOnMerge = dto.AutoDoneOnMerge;
+        await _unitOfWork.Projects.Update(project, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return Result<ProjectDto>.Success(
+            new ProjectDto(project.Id, project.Name, project.Key, project.AutoDoneOnMerge));
+    }
     public async Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct = default)
     {
         if (!isCompanyAdmin)
@@ -76,7 +96,7 @@ public class ProjectService : IProjectService
 
         var list = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .OrderBy(p => p.Name)
-            .Select(p => new ProjectDto(p.Id, p.Name, p.Key))
+            .Select(p => new ProjectDto(p.Id, p.Name, p.Key, p.AutoDoneOnMerge))
             .ToListAsync(ct);
 
         return Result<IEnumerable<ProjectDto>>.Success(list);
@@ -89,7 +109,7 @@ public class ProjectService : IProjectService
 
         var project = await _unitOfWork.Projects.GetCompanyProjects(companyId)
             .Where(p => p.Id == projectId)
-            .Select(p => new ProjectDto(p.Id, p.Name, p.Key))
+            .Select(p => new ProjectDto(p.Id, p.Name, p.Key, p.AutoDoneOnMerge))
             .FirstOrDefaultAsync(ct);
 
         if (project == null)

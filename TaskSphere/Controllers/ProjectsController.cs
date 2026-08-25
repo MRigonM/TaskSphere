@@ -28,6 +28,21 @@ public class ProjectsController : ApiBaseController
         return FromResult(result);
     }
 
+    /// <summary>
+    /// The only mutation a project has. Company-gated exactly as Create is, and deliberately
+    /// narrow — the DTO carries the toggle and nothing else, so this cannot become a back door
+    /// onto Project.Key.
+    /// </summary>
+    [Audit("Changed project settings")]
+    [Authorize(Roles = Roles.Company)]
+    [HttpPatch("{projectId:int}/settings")]
+    public async Task<IActionResult> UpdateSettings(
+        int projectId, [FromBody] UpdateProjectSettingsDto dto, CancellationToken ct)
+    {
+        var result = await _projectService.UpdateSettingsAsync(CompanyId, projectId, dto, ct);
+        return FromResult(result);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {

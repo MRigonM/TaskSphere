@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.GitHub;
-using TaskSphere.Domain.Enums;
 using TaskSphere.Domain.Interfaces;
 
 // The entities, not the namespace: TaskSphere.Domain.Entities.Task shadows Task otherwise.
@@ -120,7 +119,7 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
         // After the pull-request upsert, so State is current. Independent of the resolver: the
         // transition reads head branches, not TaskLink rows.
-        var transitions = await _mergeTransitions.ApplyAsync(companyId, actorUsername, cancellationToken);
+        var transitions = await _mergeTransitions.ApplyAsync(companyId, actorUsername, null, cancellationToken);
 
         if (synced > 0)
         {

@@ -25,8 +25,21 @@ public sealed record MergeTransitionResult(int Transitioned, int Skipped, int Fa
 /// </summary>
 public interface IMergeTransitionService
 {
+    /// <param name="repositoryIds">
+    /// Restricts the pass to pull requests in these repositories. Null means the whole company,
+    /// which is what the admin-triggered sync passes.
+    /// <para>
+    /// Deliberately repositories and not projects: a repository can be linked to several
+    /// projects, so a head branch can name keys outside a project filter. Skipping those keys
+    /// while stamping the marker strands them forever; skipping them without stamping leaves
+    /// the pull request eligible, and a later pass would re-apply the transition over a human
+    /// who moved the task back. Filtering on repositories keeps every considered pull request
+    /// considered in full.
+    /// </para>
+    /// </param>
     Task<Result<MergeTransitionResult>> ApplyAsync(
         Guid companyId,
         string? actorUsername,
+        IReadOnlyCollection<int>? repositoryIds = null,
         CancellationToken cancellationToken = default);
 }

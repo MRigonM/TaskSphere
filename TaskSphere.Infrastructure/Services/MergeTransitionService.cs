@@ -23,11 +23,17 @@ public class MergeTransitionService : IMergeTransitionService
     public async Task<Result<MergeTransitionResult>> ApplyAsync(
         Guid companyId,
         string? actorUsername,
+        IReadOnlyCollection<int>? repositoryIds = null,
         CancellationToken cancellationToken = default)
     {
-        var pending = await _unitOfWork.GitHubPullRequests
+        var query = _unitOfWork.GitHubPullRequests
             .GetByCompany(companyId)
-            .Where(p => p.State == PullRequestState.Merged && p.MergeTransitionAppliedAtUtc == null)
+            .Where(p => p.State == PullRequestState.Merged && p.MergeTransitionAppliedAtUtc == null);
+
+        if (repositoryIds is not null)
+            query = query.Where(p => repositoryIds.Contains(p.GitHubRepositoryId));
+
+        var pending = await query
             .Select(p => new { p.Id, p.GitHubRepositoryId, p.Number, p.HeadBranch })
             .ToListAsync(cancellationToken);
 

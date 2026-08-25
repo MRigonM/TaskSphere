@@ -189,7 +189,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 1, "TS-42/add-the-panel");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Value!.Transitioned);
@@ -203,7 +203,7 @@ public class MergeTransitionTests : IAsyncLifetime
         await AddPullRequest(_apiRepositoryId, 2, "TS-60/the-tab");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(1, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
@@ -215,7 +215,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 3, "TS-42/add-the-panel", PullRequestState.Open);
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
@@ -229,7 +229,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 4, "hotfix/login");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(1, result.Value!.Skipped);
@@ -243,7 +243,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 10, "TS-51/the-sync");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         // Someone deliberately flagged a problem; a merge does not clear it.
         Assert.Equal(0, result.Value!.Transitioned);
@@ -257,7 +257,7 @@ public class MergeTransitionTests : IAsyncLifetime
         await AddPullRequest(_apiRepositoryId, 11, "TS-51/the-sync");
 
         await using (var first = NewContext())
-            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         await using (var edit = NewContext())
         {
@@ -267,7 +267,7 @@ public class MergeTransitionTests : IAsyncLifetime
         }
 
         await using var second = NewContext();
-        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts51TaskId));
@@ -279,7 +279,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 12, "OO-9/ignore-me");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Open, await StatusOf(_oo9TaskId));
@@ -292,7 +292,7 @@ public class MergeTransitionTests : IAsyncLifetime
         await AddPullRequest(_apiRepositoryId, 13, "OO-9/ignore-me");
 
         await using (var first = NewContext())
-            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         await using (var edit = NewContext())
         {
@@ -302,7 +302,7 @@ public class MergeTransitionTests : IAsyncLifetime
         }
 
         await using var second = NewContext();
-        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         // Deliberate: ticking a checkbox must not mass-move a month of merged work.
         Assert.Equal(0, result.Value!.Transitioned);
@@ -322,7 +322,7 @@ public class MergeTransitionTests : IAsyncLifetime
         await AddPullRequest(_apiRepositoryId, 14, "TS-60/the-tab");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
@@ -337,12 +337,12 @@ public class MergeTransitionTests : IAsyncLifetime
 
         await using (var first = NewContext())
         {
-            var result = await NewService(first, queue).ApplyAsync(_companyId, "rigon", default);
+            var result = await NewService(first, queue).ApplyAsync(_companyId, "rigon", cancellationToken: default);
             Assert.Equal(1, result.Value!.Transitioned);
         }
 
         await using var second = NewContext();
-        var again = await NewService(second, queue).ApplyAsync(_companyId, "rigon", default);
+        var again = await NewService(second, queue).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, again.Value!.Transitioned);
         Assert.Equal(0, again.Value!.Skipped);
@@ -354,7 +354,7 @@ public class MergeTransitionTests : IAsyncLifetime
         await AddPullRequest(_apiRepositoryId, 21, "TS-42/add-the-panel");
 
         await using (var first = NewContext())
-            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+            await NewService(first, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
 
@@ -367,7 +367,7 @@ public class MergeTransitionTests : IAsyncLifetime
         }
 
         await using var second = NewContext();
-        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(second, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         // The whole reason the marker exists: a status change is an action, not a fact, and
         // re-applying it every sync would overrule the human.
@@ -383,7 +383,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 22, "BS-42/purge-it");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Open, await StatusOf(_bs42TaskId));
@@ -396,7 +396,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_webRepositoryId, 23, "TS-42/add-the-panel");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(0, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
@@ -409,7 +409,7 @@ public class MergeTransitionTests : IAsyncLifetime
         var pullId = await AddPullRequest(_apiRepositoryId, 24, "TS-42-and-TS-60/two-at-once");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(2, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
@@ -434,7 +434,7 @@ public class MergeTransitionTests : IAsyncLifetime
         }
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         // The first pull request's work is persisted regardless of what the second one does.
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
@@ -445,7 +445,7 @@ public class MergeTransitionTests : IAsyncLifetime
     public async SystemTask.Task Reports_success_with_counts_rather_than_an_error_when_nothing_is_pending()
     {
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(new MergeTransitionResult(0, 0, 0), result.Value);
@@ -467,7 +467,7 @@ public class MergeTransitionTests : IAsyncLifetime
                 $"CHECK (NOT ([Id] = {_ts60TaskId} AND [Status] = 'Done'))");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         // A failure is a count, not an abort — and the pull request that already succeeded
         // keeps its work.
@@ -492,7 +492,7 @@ public class MergeTransitionTests : IAsyncLifetime
                 $"CHECK (NOT ([Id] = {_ts60TaskId} AND [Status] = 'Done'))");
 
         await using var db = NewContext();
-        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", default);
+        var result = await NewService(db, new AuditQueue()).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         Assert.Equal(1, result.Value!.Failed);
         Assert.Equal(1, result.Value!.Transitioned);
@@ -506,7 +506,7 @@ public class MergeTransitionTests : IAsyncLifetime
 
         var queue = new AuditQueue();
         await using var db = NewContext();
-        await NewService(db, queue).ApplyAsync(_companyId, "rigon", default);
+        await NewService(db, queue).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var entries = new List<AuditEntry>();
@@ -533,7 +533,7 @@ public class MergeTransitionTests : IAsyncLifetime
 
         var queue = new AuditQueue();
         await using var db = NewContext();
-        await NewService(db, queue).ApplyAsync(_companyId, "rigon", default);
+        await NewService(db, queue).ApplyAsync(_companyId, "rigon", cancellationToken: default);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         var count = 0;
@@ -547,5 +547,67 @@ public class MergeTransitionTests : IAsyncLifetime
         }
 
         Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async SystemTask.Task Ignores_a_pull_request_in_a_repository_outside_the_filter()
+    {
+        var pullId = await AddPullRequest(_apiRepositoryId, 50, "TS-42/add-the-panel");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue())
+            .ApplyAsync(_companyId, "rigon", new[] { _webRepositoryId }, default);
+
+        Assert.Equal(0, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
+
+        // NOT stamped: a pull request the filter skipped has not been considered, and must
+        // still be eligible when a pass that covers its repository runs.
+        Assert.Null(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task Transitions_a_pull_request_in_a_repository_inside_the_filter()
+    {
+        var pullId = await AddPullRequest(_apiRepositoryId, 51, "TS-42/add-the-panel");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue())
+            .ApplyAsync(_companyId, "rigon", new[] { _apiRepositoryId }, default);
+
+        Assert.Equal(1, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task A_filtered_pass_still_considers_every_key_on_the_branch_it_processes()
+    {
+        // The invariant that made a project filter unworkable: a considered pull request is
+        // considered FULLY. Both keys move, and the marker is stamped once — so no key is ever
+        // left stranded behind a marker, and no pull request stays eligible to be re-applied
+        // over a human's decision.
+        var pullId = await AddPullRequest(_apiRepositoryId, 52, "TS-42-and-TS-60/two-at-once");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue())
+            .ApplyAsync(_companyId, "rigon", new[] { _apiRepositoryId }, default);
+
+        Assert.Equal(2, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task A_null_filter_still_means_the_whole_company()
+    {
+        await AddPullRequest(_apiRepositoryId, 53, "TS-42/add-the-panel");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue())
+            .ApplyAsync(_companyId, "rigon", null, default);
+
+        Assert.Equal(1, result.Value!.Transitioned);
     }
 }

@@ -526,4 +526,68 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         Assert.False(result.Value!.Refreshed);
         Assert.Empty(api.Calls);
     }
+
+    [Fact]
+    public async SystemTask.Task A_member_of_the_project_may_refresh_it()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, MemberUserId, isCompanyAdmin: false, MemberUserId, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Refreshed);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_user_who_is_not_a_member_may_not()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, StrangerUserId, isCompanyAdmin: false, StrangerUserId, default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Auth.Forbidden", result.Errors[0].Code);
+
+        // And no call was made on their behalf.
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_project_in_another_company_is_not_reachable()
+    {
+        var api = new FakeGitHubApiClient();
+
+        Guid otherCompanyId;
+        int foreignProjectId;
+
+        await using (var seed = NewContext())
+        {
+            var other = new Company { Name = "Other Co" };
+            seed.Companies.Add(other);
+            await seed.SaveChangesAsync();
+            otherCompanyId = other.Id;
+
+            var foreign = new Project
+            {
+                Name = "Foreign",
+                Key = "FR",
+                CompanyId = otherCompanyId,
+                AutoDoneOnMerge = true,
+            };
+            seed.Projects.Add(foreign);
+            await seed.SaveChangesAsync();
+            foreignProjectId = foreign.Id;
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, foreignProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(api.Calls);
+    }
 }

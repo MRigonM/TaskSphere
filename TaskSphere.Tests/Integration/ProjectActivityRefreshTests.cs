@@ -45,24 +45,41 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Answers every pull-request listing with one merged pull request whose head branch names
-    /// TS-42, and records the urls it was asked for so a test can assert that NO call was made.
+    /// Answers /pulls URLs with one merged pull request whose head branch names TS-42,
+    /// and /branches URLs with one branch named TS-42/add-the-panel, and records the urls it
+    /// was asked for so a test can assert that NO call was made or that the right URLs were called.
     /// </summary>
     private sealed class FakeGitHubApiClient : IGitHubApiClient
     {
         public List<string> Calls { get; } = new();
         public bool Fail { get; set; }
+        public bool FailBranchesOnly { get; set; }
 
         public SystemTask.Task<Result<GitHubResponse>> GetAsync(
             long installationId, string url, CancellationToken cancellationToken = default)
         {
             Calls.Add(url);
 
-            if (Fail)
+            if (Fail || (FailBranchesOnly && url.Contains("/branches")))
                 return SystemTask.Task.FromResult(
                     Result<GitHubResponse>.Failure(new Error("GitHub.Failed", "GitHub returned 500.")));
 
-            var body = JsonSerializer.Serialize(new[]
+            if (url.Contains("/branches"))
+            {
+                var branchBody = JsonSerializer.Serialize(new[]
+                {
+                    new
+                    {
+                        name = "TS-42/add-the-panel",
+                        commit = new { sha = "abc123def456" },
+                    },
+                });
+
+                return SystemTask.Task.FromResult(
+                    Result<GitHubResponse>.Success(new GitHubResponse(branchBody, null)));
+            }
+
+            var pullBody = JsonSerializer.Serialize(new[]
             {
                 new
                 {
@@ -80,7 +97,7 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             });
 
             return SystemTask.Task.FromResult(
-                Result<GitHubResponse>.Success(new GitHubResponse(body, null)));
+                Result<GitHubResponse>.Success(new GitHubResponse(pullBody, null)));
         }
 
         public SystemTask.Task<Result<GitHubResponse>> PostAsync(
@@ -98,8 +115,10 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         return new ProjectActivityRefreshService(
             uow,
             new AccessControlService(db),
+            new GitHubBranchMirror(api, uow),
             new GitHubPullRequestMirror(api, uow),
-            new MergeTransitionService(uow, new AuditQueue()));
+            new MergeTransitionService(uow, new AuditQueue()),
+            new GitHubTaskLinkResolver(uow));
     }
 
     public async SystemTask.Task InitializeAsync()
@@ -414,10 +433,39 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         Assert.Equal(1, result.Value.TasksTransitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
 
-        // Only this project's repository, and only the pull-request listing: the commits pass
-        // is what makes a full sync expensive, and this feature never pays for it.
-        Assert.Single(api.Calls);
-        Assert.Contains("/repos/rigon-org/api/pulls", api.Calls[0]);
+        // Two calls per repository: the branch listing and the pull-request listing. The
+        // commits pass is what makes a full sync expensive, and this feature never pays for it.
+        Assert.Equal(2, api.Calls.Count);
+        Assert.Contains("/repos/rigon-org/api/branches", api.Calls[0]);
+        Assert.Contains("/repos/rigon-org/api/pulls", api.Calls[1]);
+    }
+
+    [Fact]
+    public async SystemTask.Task Creates_a_task_link_to_restore_the_task_activity()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+
+        // The Activity tab reads TaskLink rows. The refresh must create one joining the task to
+        // the branch it was worked on.
+        await using var check = NewContext();
+        var link = await check.TaskLinks
+            .FirstOrDefaultAsync(l => l.TaskId == _ts42TaskId &&
+                                      l.GitHubBranchId.HasValue);
+
+        Assert.NotNull(link);
+
+        // Verify the branch name matches what we expect.
+        var branch = await check.GitHubBranches
+            .FirstOrDefaultAsync(b => b.Id == link.GitHubBranchId);
+
+        Assert.NotNull(branch);
+        Assert.Equal("TS-42/add-the-panel", branch.Name);
     }
 
     [Fact]
@@ -444,17 +492,72 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             await NewService(first, api).RefreshAsync(
                 _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
-        Assert.Single(api.Calls);
+        Assert.Equal(2, api.Calls.Count);
 
         await using var second = NewContext();
         var result = await NewService(second, api).RefreshAsync(
             _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
         // The whole point of the cooldown: five people opening boards in the same minute cost
-        // one call, not five.
-        Assert.Single(api.Calls);
+        // one call, not five. The resolver and transition are not run on a cooldown hit.
+        Assert.Equal(2, api.Calls.Count);
         Assert.False(result.Value!.Refreshed);
         Assert.Equal(0, result.Value.RepositoriesRefreshed);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_cooldown_hit_costs_no_resolver_run()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using (var first = NewContext())
+            await NewService(first, api).RefreshAsync(
+                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // After the first refresh, the task must be linked to the branch.
+        await using (var check1 = NewContext())
+        {
+            var link1 = await check1.TaskLinks
+                .FirstOrDefaultAsync(l => l.TaskId == _ts42TaskId &&
+                                          l.GitHubBranchId.HasValue);
+            Assert.NotNull(link1);
+        }
+
+        int linkCountBefore;
+        await using (var before = NewContext())
+            linkCountBefore = await before.TaskLinks.CountAsync();
+
+        await using var second = NewContext();
+        await NewService(second, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // The cooldown was hit: no API call was made, and the resolver was not run, so no new
+        // links were created.
+        int linkCountAfter;
+        await using (var after = NewContext())
+            linkCountAfter = await after.TaskLinks.CountAsync();
+
+        Assert.Equal(linkCountBefore, linkCountAfter);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_repository_whose_branch_listing_fails_does_not_stamp_its_cooldown()
+    {
+        var api = new FakeGitHubApiClient { FailBranchesOnly = true };
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
+
+        await using var check = NewContext();
+        var repository = await check.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+
+        // Otherwise a single failure buys a minute of silence it never earned, and the next
+        // board load cannot retry.
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
     }
 
     [Fact]
@@ -478,7 +581,8 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         var result = await NewService(second, api).RefreshAsync(
             _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
-        Assert.Equal(2, api.Calls.Count);
+        // Two refreshes, two calls per repository: first had 2, second has 2 more = 4 total.
+        Assert.Equal(4, api.Calls.Count);
         Assert.True(result.Value!.Refreshed);
     }
 

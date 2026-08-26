@@ -12,13 +12,15 @@ public sealed record ProjectActivityRefreshDto(
     int TasksTransitioned);
 
 /// <summary>
-/// Refreshes pull requests for one project's linked repositories, then runs the merge → Done
-/// transition scoped to those repositories. Triggered by opening a board or a backlog, so it is
-/// reachable by project members and not only company admins — the repository↔project link is
-/// what authorizes it, the same fact create-branch-from-task relies on.
+/// Refreshes branches and pull requests for one project's linked repositories, then runs the
+/// merge → Done transition scoped to those repositories. Triggered by opening a board or a
+/// backlog, so it is reachable by project members and not only company admins — the
+/// repository↔project link is what authorizes it, the same fact create-branch-from-task relies on.
 /// <para>
-/// Pull requests only. Commits and branches cost 1 + B calls per repository and the transition
-/// reads neither, so this stays affordable enough to run on a page load.
+/// Two calls per repository — the pull-request listing and the branch listing — while commits
+/// remain Sync-only because they cost one listing per branch. The transition reads only head
+/// branches, not TaskLink rows. The branch pass and the resolver exist so the task's Activity
+/// tab shows the work, not to feed the transition.
 /// </para>
 /// </summary>
 public interface IProjectActivityRefreshService

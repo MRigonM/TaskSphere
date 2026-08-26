@@ -23,19 +23,25 @@ public class ProjectActivityRefreshService : IProjectActivityRefreshService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAccessControlService _accessControl;
+    private readonly GitHubBranchMirror _branches;
     private readonly GitHubPullRequestMirror _pullRequests;
     private readonly IMergeTransitionService _mergeTransitions;
+    private readonly IGitHubTaskLinkResolver _resolver;
 
     public ProjectActivityRefreshService(
         IUnitOfWork unitOfWork,
         IAccessControlService accessControl,
+        GitHubBranchMirror branches,
         GitHubPullRequestMirror pullRequests,
-        IMergeTransitionService mergeTransitions)
+        IMergeTransitionService mergeTransitions,
+        IGitHubTaskLinkResolver resolver)
     {
         _unitOfWork = unitOfWork;
         _accessControl = accessControl;
+        _branches = branches;
         _pullRequests = pullRequests;
         _mergeTransitions = mergeTransitions;
+        _resolver = resolver;
     }
 
     public async Task<Result<ProjectActivityRefreshDto>> RefreshAsync(
@@ -103,12 +109,16 @@ public class ProjectActivityRefreshService : IProjectActivityRefreshService
         {
             try
             {
-                var result = await _pullRequests.RefreshAsync(
+                var branchResult = await _branches.RefreshAsync(
+                    installation, repository.Id, repository.FullName, cancellationToken);
+
+                var pullResult = await _pullRequests.RefreshAsync(
                     installation, repository.Id, repository.FullName, since, cancellationToken);
 
                 // A repository that failed keeps its old stamp, so the next board load retries
-                // it rather than waiting out a cooldown it never earned.
-                if (!result.IsSuccess)
+                // it rather than waiting out a cooldown it never earned. Stamp the cooldown and
+                // count the repository as refreshed only when both passes succeeded.
+                if (!branchResult.IsSuccess || !pullResult.IsSuccess)
                     continue;
 
                 repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
@@ -125,6 +135,14 @@ public class ProjectActivityRefreshService : IProjectActivityRefreshService
                 // repository's save re-sends the bad write and fails too.
                 _unitOfWork.DiscardPendingChanges();
             }
+        }
+
+        // When at least one repository was refreshed, run the resolver before the merge transition.
+        // Skip it entirely when nothing was refreshed — a cooldown hit must stay free, and the
+        // resolver reads every commit, branch and pull request in the company.
+        if (refreshed > 0)
+        {
+            await _resolver.ResolveAsync(companyId, cancellationToken);
         }
 
         var transitions = await _mergeTransitions.ApplyAsync(

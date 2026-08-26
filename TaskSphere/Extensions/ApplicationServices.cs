@@ -103,6 +103,7 @@ public static class ApplicationServices
         services.AddScoped<IGitHubBranchService, GitHubBranchService>();
         services.AddScoped<IProjectActivityRefreshService, ProjectActivityRefreshService>();
         services.AddScoped<GitHubPullRequestMirror>();
+        services.AddScoped<GitHubBranchMirror>();
         services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
 
         services.AddHttpClient<IGitHubTokenService, GitHubTokenService>(ConfigureGitHubApiClient);

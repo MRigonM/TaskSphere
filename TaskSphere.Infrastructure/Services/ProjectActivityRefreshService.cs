@@ -118,6 +118,10 @@ public class ProjectActivityRefreshService : IProjectActivityRefreshService
                 // A repository that failed keeps its old stamp, so the next board load retries
                 // it rather than waiting out a cooldown it never earned. Stamp the cooldown and
                 // count the repository as refreshed only when both passes succeeded.
+                // Unlike the full sync, a branch failure does not stop pull-request processing:
+                // the transition's input (merged PRs) must flow even if the Activity tab (branches)
+                // is temporarily unavailable. Branches exist to show work history; pull requests
+                // drive task completion.
                 if (!branchResult.IsSuccess || !pullResult.IsSuccess)
                     continue;
 

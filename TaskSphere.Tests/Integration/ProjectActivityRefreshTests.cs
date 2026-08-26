@@ -10,6 +10,7 @@ using TaskSphere.Infrastructure.Repositories;
 using TaskSphere.Infrastructure.Services;
 
 using Company = TaskSphere.Domain.Entities.Company;
+using GitHubBranch = TaskSphere.Domain.Entities.GitHubBranch;
 using GitHubInstallation = TaskSphere.Domain.Entities.GitHubInstallation;
 using GitHubPullRequest = TaskSphere.Domain.Entities.GitHubPullRequest;
 using GitHubRepository = TaskSphere.Domain.Entities.GitHubRepository;
@@ -523,21 +524,48 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             Assert.NotNull(link1);
         }
 
-        int linkCountBefore;
-        await using (var before = NewContext())
-            linkCountBefore = await before.TaskLinks.CountAsync();
+        int callsAfterFirstRefresh = api.Calls.Count;
 
+        // Seed a new task TS-99 and a branch with its name. The resolver would find and link
+        // them, so a second refresh inside the cooldown can only link them if the resolver ran.
+        int ts99TaskId;
+        await using (var seed = NewContext())
+        {
+            var ts99 = new TaskEntity
+            {
+                Title = "New Task",
+                Number = 99,
+                ProjectId = _tsProjectId,
+                CompanyId = _companyId,
+                Status = TaskStatuses.InProgress,
+            };
+            seed.Set<TaskEntity>().Add(ts99);
+            await seed.SaveChangesAsync();
+            ts99TaskId = ts99.Id;
+
+            var branch99 = new GitHubBranch
+            {
+                GitHubRepositoryId = _apiRepositoryId,
+                CompanyId = _companyId,
+                Name = "TS-99/new-feature",
+                HeadSha = "def456",
+            };
+            seed.GitHubBranches.Add(branch99);
+            await seed.SaveChangesAsync();
+        }
+
+        // Refresh again, inside the cooldown window. The resolver is NOT run on a cooldown hit.
         await using var second = NewContext();
         await NewService(second, api).RefreshAsync(
             _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
-        // The cooldown was hit: no API call was made, and the resolver was not run, so no new
-        // links were created.
-        int linkCountAfter;
-        await using (var after = NewContext())
-            linkCountAfter = await after.TaskLinks.CountAsync();
+        // The cooldown was hit: no API call was made. The resolver did not run, so the TS-99
+        // task remains unlinked to its branch.
+        Assert.Equal(callsAfterFirstRefresh, api.Calls.Count);
 
-        Assert.Equal(linkCountBefore, linkCountAfter);
+        await using var check = NewContext();
+        var link99 = await check.TaskLinks.FirstOrDefaultAsync(l => l.TaskId == ts99TaskId);
+        Assert.Null(link99);
     }
 
     [Fact]

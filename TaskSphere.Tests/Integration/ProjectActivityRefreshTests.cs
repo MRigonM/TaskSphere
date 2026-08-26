@@ -500,7 +500,8 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
         // The whole point of the cooldown: five people opening boards in the same minute cost
-        // one call, not five. The resolver and transition are not run on a cooldown hit.
+        // one call, not five. On a full cooldown hit, the repositories.Count == 0 early return
+        // protects the method before the loop; the refreshed > 0 guard is dead code on this path.
         Assert.Equal(2, api.Calls.Count);
         Assert.False(result.Value!.Refreshed);
         Assert.Equal(0, result.Value.RepositoriesRefreshed);
@@ -558,29 +559,6 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         await using var check = NewContext();
         var link99 = await check.TaskLinks.FirstOrDefaultAsync(l => l.TaskId == ts99TaskId);
         Assert.Null(link99);
-    }
-
-    [Fact]
-    public async SystemTask.Task A_second_refresh_inside_the_cooldown_window_makes_no_call()
-    {
-        var api = new FakeGitHubApiClient();
-
-        await using (var first = NewContext())
-            await NewService(first, api).RefreshAsync(
-                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
-
-        Assert.Equal(2, api.Calls.Count);
-
-        await using var second = NewContext();
-        var result = await NewService(second, api).RefreshAsync(
-            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
-
-        // The cooldown: the second refresh in the same window hits the repositories.Count == 0
-        // early return and returns before the loop. No API call, no resolver run. The
-        // refreshed > 0 guard is dead code on this path.
-        Assert.Equal(2, api.Calls.Count);
-        Assert.False(result.Value!.Refreshed);
-        Assert.Equal(0, result.Value.RepositoriesRefreshed);
     }
 
     [Fact]

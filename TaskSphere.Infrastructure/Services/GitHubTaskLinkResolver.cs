@@ -47,7 +47,7 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
 
         var pulls = await _unitOfWork.GitHubPullRequests
             .GetByCompany(companyId)
-            .Select(p => new { p.Id, p.GitHubRepositoryId, p.Title, p.Body })
+            .Select(p => new { p.Id, p.GitHubRepositoryId, p.Title, p.Body, p.HeadBranch })
             .ToListAsync(cancellationToken);
 
         var created = 0;
@@ -62,11 +62,16 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
 
         foreach (var pull in pulls)
         {
-            // Title and body scanned as one text, so a pull request that names a task in both
-            // places is one mention rather than two: TaskKeyScanner.Scan already returns each
-            // distinct key once per text. The per-kind suppression below would collapse the
-            // second link either way; what this keeps honest is the KeysSeen count.
+            // Title, body, and head branch are scanned as one text, so a pull request that
+            // names a task in multiple places is one mention rather than many: TaskKeyScanner.Scan
+            // already returns each distinct key once per text. The per-kind suppression below
+            // would collapse duplicate links either way; what this keeps honest is the
+            // KeysSeen count. The head branch is included because the merge → Done transition
+            // decides by head branch, so a pull request that can move a task by its branch must
+            // also be able to link by it, or the task's history omits the very pull request that
+            // closed it.
             var text = string.IsNullOrEmpty(pull.Body) ? pull.Title : pull.Title + "\n" + pull.Body;
+            text = string.IsNullOrEmpty(pull.HeadBranch) ? text : text + "\n" + pull.HeadBranch;
             await LinkAll(text, pull.GitHubRepositoryId, pullRequestId: pull.Id);
         }
 

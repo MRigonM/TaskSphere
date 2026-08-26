@@ -175,7 +175,7 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         return branch.Id;
     }
 
-    private async SystemTask.Task<int> SeedPullRequest(int number, string title, string? body, int repositoryId, Guid? companyId = null)
+    private async SystemTask.Task<int> SeedPullRequest(int number, string title, string? body, int repositoryId, Guid? companyId = null, string? headBranch = null)
     {
         await using var db = NewContext();
 
@@ -188,7 +188,7 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
             Body = body,
             State = PullRequestState.Open,
             AuthorLogin = "MRigonM",
-            HeadBranch = "main",
+            HeadBranch = headBranch ?? "main",
             OpenedAtUtc = DateTime.UtcNow,
             GitHubUpdatedAtUtc = DateTime.UtcNow,
             HtmlUrl = $"https://github.com/rigon-org/api/pull/{number}",
@@ -719,5 +719,38 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
         await using (var db = NewContext())
             Assert.Equal(2, await db.TaskLinks.CountAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestHeadBranch_ProducesALink_WhenTheTitleAndBodyCarryNoKey()
+    {
+        // The merge → Done transition decides by head branch, so a pull request that can move
+        // a task by its branch must also be able to link by it, or the task's history omits the
+        // very pull request that closed it.
+        var pullId = await SeedPullRequest(25, "Add the panel", null, _apiRepositoryId, headBranch: "TS-42/implement");
+
+        await Resolve();
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts42TaskId, link.TaskId);
+        Assert.Equal(pullId, link.GitHubPullRequestId);
+    }
+
+    [Fact]
+    public async SystemTask.Task APullRequestTitle_StillProducesALink()
+    {
+        // Regression: a pull request whose title names a key must continue to link, even after
+        // the resolver begins scanning the head branch as well.
+        var pullId = await SeedPullRequest(26, "TS-51 wire the sync", null, _apiRepositoryId, headBranch: "some-other-branch");
+
+        await Resolve();
+
+        await using var db = NewContext();
+        var link = await db.TaskLinks.SingleAsync();
+
+        Assert.Equal(_ts51TaskId, link.TaskId);
+        Assert.Equal(pullId, link.GitHubPullRequestId);
     }
 }

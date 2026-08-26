@@ -897,4 +897,29 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
                 "ALTER TABLE GitHubRepositories DROP CONSTRAINT CK_RefreshTest");
         }
     }
+
+    [Fact]
+    public async SystemTask.Task Creates_a_task_link_to_the_pull_request_by_its_head_branch()
+    {
+        // The merge → Done transition decides by head branch, so a pull request that can move
+        // a task by its branch must also link by it. The fixture's fake PR has title "Add the
+        // panel" (no key) and head branch "TS-42/add-the-panel" (has the key). After refresh,
+        // the pull request must appear in the activity.
+        var api = new FakeGitHubApiClient();
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.True(result.IsSuccess);
+
+        // The Activity tab reads TaskLink rows. The refresh must create one joining the task to
+        // the pull request by its head branch.
+        await using var check = NewContext();
+        var link = await check.TaskLinks
+            .FirstOrDefaultAsync(l => l.TaskId == _ts42TaskId &&
+                                      l.GitHubPullRequestId.HasValue);
+
+        Assert.NotNull(link);
+    }
 }

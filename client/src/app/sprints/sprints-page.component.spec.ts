@@ -137,18 +137,79 @@ describe('SprintsPageComponent — GitHub refresh on load', () => {
     const { fixture, projectsApi } = setup();
     await fixture.whenStable();
 
-    // Here paramMap and refreshGitHub are both synchronous (`of(...)`), so the whole
-    // refreshGitHubActivity() tap runs to completion before loadSprints(true) is reached —
-    // selectedSprint() is still null at that point, so the re-read branch does not fire in this
-    // test. That ordering is a property of this test's synchronous doubles, not of production:
-    // refreshGitHub is an HTTP call that round-trips to GitHub, while loadSprints hits a local
-    // DB-backed endpoint, so in the app the sprint is quite likely already selected by the time
-    // the refresh resolves. Both orderings are correct: if the sprint is already selected, the
-    // branch re-reads the board; if it is not, the board load that follows already carries any
-    // transitions, since the server applied them before responding. The re-read branch itself is
-    // pinned by 're-reads the board when the refresh moved something' below.
+    // This fixture's refreshGitHub double answers with tasksTransitioned: 0, so neither branch
+    // of refreshGitHubActivity()'s tap fires here — this test only pins that the refresh call
+    // itself happens exactly once per project load. The not-yet-selected case (selectedSprint()
+    // still null when the refresh resolves) no longer drops the signal: it re-runs
+    // loadSprints(true) instead of a targeted board reload. That path is covered by
+    // 're-reads via loadSprints when nothing was selected yet' below, which configures
+    // tasksTransitioned: 2 before the component is even created.
     expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
     expect(projectsApi.refreshGitHub.mock.calls.length).toBe(1);
+  });
+
+  it('re-reads via loadSprints when nothing was selected yet', async () => {
+    // Proves the binding from init all the way through to the re-read, by configuring the
+    // mock BEFORE setup runs with tasksTransitioned > 0 — mirroring the equivalent
+    // tasks-page test. With paramMap and refreshGitHub both synchronous, refreshGitHubActivity()
+    // resolves before selectedSprint() is ever set, so the else branch (loadSprints(true)) is
+    // the one under test, not the loadBoard(s.id) branch.
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
+    );
+
+    const boardFn = vi.fn().mockReturnValue(of(board(inProgressTask, 'inProgress')));
+    const getByProject = vi.fn().mockReturnValue(of([sprint]));
+
+    const api = { board: boardFn, getByProject };
+
+    // Key: configure it to return tasksTransitioned > 0 BEFORE component creation.
+    const projectsApi = {
+      getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
+      getMembers: vi.fn().mockReturnValue(of([])),
+      refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 })),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [SprintsPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SprintsApiService, useValue: api },
+        {
+          provide: TasksApiService,
+          useValue: {
+            getBySprint: vi.fn().mockReturnValue(of([inProgressTask])),
+            getById: vi.fn().mockReturnValue(of(inProgressTask)),
+          },
+        },
+        { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
+        { provide: ProjectsApiService, useValue: projectsApi },
+        { provide: ToastService, useValue: { show: vi.fn() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(new Map([['projectId', '7']]) as any),
+            queryParamMap: of(new Map() as any),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(SprintsPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // getByProject is read once by the tap's else-branch loadSprints(true) call, and again by
+    // the normal loadSprints(true) call that ngOnInit always makes — the re-read from the
+    // transition signal is the difference between one call and two.
+    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
+    expect(getByProject.mock.calls.length).toBe(2);
+
+    TestBed.inject(HttpTestingController).match(() => true).forEach((r) =>
+      r.flush({ commits: [], branches: [], pullRequests: [], lastSyncedAtUtc: null }),
+    );
   });
 
   it('re-reads the board when the refresh moved something', async () => {

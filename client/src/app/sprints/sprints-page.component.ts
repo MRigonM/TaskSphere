@@ -154,6 +154,11 @@ export class SprintsPageComponent {
    * Fired once per project load. Refreshes this project's pull requests and applies any merge →
    * Done transitions, then re-reads only if something actually moved.
    *
+   * This runs concurrently with loadSprints(true) (both fire from ngOnInit / the paramMap
+   * subscribe), so selectedSprint may still be null when this resolves. In that case
+   * loadSprints(true) is re-run rather than dropping the signal — it re-selects a sprint and
+   * loads its board, so the transition is not lost to the race.
+   *
    * Failures are swallowed deliberately: the user did not ask for this call, GitHub being slow
    * or unreachable must not delay or break a board, and the manual Sync button is still the
    * visible, diagnosable path.
@@ -168,6 +173,7 @@ export class SprintsPageComponent {
           if (result?.tasksTransitioned > 0) {
             const s = this.selectedSprint();
             if (s) this.loadBoard(s.id);
+            else this.loadSprints(true);
           }
         }),
         catchError(() => of(null)),

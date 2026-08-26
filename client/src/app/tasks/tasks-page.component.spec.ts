@@ -168,7 +168,7 @@ describe('TasksPageComponent — GitHub refresh on load', () => {
     // After full init, refreshGitHub should have been called and triggered a re-read of the backlog
     expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
     // getBacklog is called during reloadAll() and again during refreshTasks() when tasksTransitioned > 0
-    expect(getBacklog.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(getBacklog.mock.calls.length).toBe(2);
   });
 
   it('refreshes GitHub once when the project loads', async () => {
@@ -226,4 +226,10 @@ describe('TasksPageComponent — GitHub refresh on load', () => {
       commits: [], branches: [], pullRequests: [], lastSyncedAtUtc: null,
     }));
   });
+});
+
+// setup() writes a Company-role auth blob to localStorage; clear it after every test in this
+// file so it does not leak into later tests.
+afterEach(() => {
+  localStorage.removeItem('tasksphere_auth');
 });

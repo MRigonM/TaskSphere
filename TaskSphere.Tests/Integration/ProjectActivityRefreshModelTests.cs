@@ -109,6 +109,7 @@ public class ProjectActivityRefreshModelTests : IAsyncLifetime
 
         var source = await File.ReadAllTextAsync(Path.GetFullPath(path));
 
+        Assert.Contains("existing.IsPrivate", source);
         Assert.DoesNotContain("existing.PullRequestsRefreshedAtUtc", source);
     }
 }

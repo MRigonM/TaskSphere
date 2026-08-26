@@ -122,6 +122,7 @@ public class MergeTransitionModelTests : IAsyncLifetime
         var mirrorSource = await File.ReadAllTextAsync(Path.GetFullPath(mirrorPath));
         var syncSource = await File.ReadAllTextAsync(Path.GetFullPath(syncPath));
 
+        Assert.Contains("existing.HeadBranch", mirrorSource);
         Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", mirrorSource);
         Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", syncSource);
     }

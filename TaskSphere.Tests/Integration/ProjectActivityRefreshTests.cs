@@ -593,6 +593,42 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
     }
 
     [Fact]
+    public async SystemTask.Task A_company_with_no_installation_reports_not_connected()
+    {
+        var api = new FakeGitHubApiClient();
+
+        Guid disconnectedCompanyId;
+        int disconnectedProjectId;
+
+        await using (var seed = NewContext())
+        {
+            var disconnected = new Company { Name = "Disconnected Co" };
+            seed.Companies.Add(disconnected);
+            await seed.SaveChangesAsync();
+            disconnectedCompanyId = disconnected.Id;
+
+            var project = new Project
+            {
+                Name = "No Installation",
+                Key = "NI",
+                CompanyId = disconnectedCompanyId,
+                AutoDoneOnMerge = true,
+            };
+            seed.Projects.Add(project);
+            await seed.SaveChangesAsync();
+            disconnectedProjectId = project.Id;
+        }
+
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            disconnectedCompanyId, disconnectedProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("GitHub.NotConnected", result.Errors[0].Code);
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
     public async SystemTask.Task A_repository_whose_listing_fails_does_not_stamp_its_cooldown()
     {
         var api = new FakeGitHubApiClient { Fail = true };
@@ -675,7 +711,7 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
 
         // The pull request's marker must be null: no transition was applied.
         await using var check = NewContext();
-        var unlinkedPull = await check.GitHubPullRequests.SingleAsync(p => p.Id != 0 && p.GitHubRepositoryId == _webRepositoryId);
+        var unlinkedPull = await check.GitHubPullRequests.SingleAsync(p => p.GitHubRepositoryId == _webRepositoryId);
         Assert.Null(unlinkedPull.MergeTransitionAppliedAtUtc);
     }
 

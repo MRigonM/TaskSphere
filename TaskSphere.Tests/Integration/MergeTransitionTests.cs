@@ -26,6 +26,8 @@ public class MergeTransitionTests : IAsyncLifetime
     private int _tsProjectId;      // key "TS", linked to api, AutoDoneOnMerge = true
     private int _bsProjectId;      // key "BS", linked to nothing, AutoDoneOnMerge = true
     private int _optOutProjectId;  // key "OO", linked to api, AutoDoneOnMerge = false
+    private int _xpProjectId;      // key "XP", linked to api, AutoDoneOnMerge = true — a SECOND
+                                    // project on the same repository, for cross-project branches.
     private int _apiRepositoryId;
     private int _webRepositoryId;  // linked to no project
 
@@ -34,6 +36,7 @@ public class MergeTransitionTests : IAsyncLifetime
     private int _ts60TaskId;
     private int _bs42TaskId;
     private int _oo9TaskId;
+    private int _xp7TaskId;
 
     private static ApplicationDbContext NewContext()
     {
@@ -69,11 +72,13 @@ public class MergeTransitionTests : IAsyncLifetime
         var ts = new Project { Name = "TaskSphere", Key = "TS", CompanyId = _companyId, AutoDoneOnMerge = true };
         var bs = new Project { Name = "BaseClean", Key = "BS", CompanyId = _companyId, AutoDoneOnMerge = true };
         var oo = new Project { Name = "Opted Out", Key = "OO", CompanyId = _companyId, AutoDoneOnMerge = false };
-        db.Projects.AddRange(ts, bs, oo);
+        var xp = new Project { Name = "Cross Project", Key = "XP", CompanyId = _companyId, AutoDoneOnMerge = true };
+        db.Projects.AddRange(ts, bs, oo, xp);
         await db.SaveChangesAsync();
         _tsProjectId = ts.Id;
         _bsProjectId = bs.Id;
         _optOutProjectId = oo.Id;
+        _xpProjectId = xp.Id;
 
         var installation = new GitHubInstallation
         {
@@ -121,6 +126,13 @@ public class MergeTransitionTests : IAsyncLifetime
                 GitHubRepositoryId = _apiRepositoryId,
                 CompanyId = _companyId,
                 LinkedByUserId = "rigon",
+            },
+            new ProjectRepositoryLink
+            {
+                ProjectId = _xpProjectId,
+                GitHubRepositoryId = _apiRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
             });
         await db.SaveChangesAsync();
 
@@ -129,7 +141,8 @@ public class MergeTransitionTests : IAsyncLifetime
         var ts60 = new TaskEntity { Title = "Tab", Number = 60, ProjectId = _tsProjectId, CompanyId = _companyId, Status = TaskStatuses.Open };
         var bs42 = new TaskEntity { Title = "Purge", Number = 42, ProjectId = _bsProjectId, CompanyId = _companyId, Status = TaskStatuses.Open };
         var oo9 = new TaskEntity { Title = "Ignore", Number = 9, ProjectId = _optOutProjectId, CompanyId = _companyId, Status = TaskStatuses.Open };
-        db.Set<TaskEntity>().AddRange(ts42, ts51, ts60, bs42, oo9);
+        var xp7 = new TaskEntity { Title = "Bridge", Number = 7, ProjectId = _xpProjectId, CompanyId = _companyId, Status = TaskStatuses.Open };
+        db.Set<TaskEntity>().AddRange(ts42, ts51, ts60, bs42, oo9, xp7);
         await db.SaveChangesAsync();
 
         _ts42TaskId = ts42.Id;
@@ -137,6 +150,7 @@ public class MergeTransitionTests : IAsyncLifetime
         _ts60TaskId = ts60.Id;
         _bs42TaskId = bs42.Id;
         _oo9TaskId = oo9.Id;
+        _xp7TaskId = xp7.Id;
     }
 
     public SystemTask.Task DisposeAsync() => SystemTask.Task.CompletedTask;
@@ -596,6 +610,28 @@ public class MergeTransitionTests : IAsyncLifetime
         Assert.Equal(2, result.Value!.Transitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts60TaskId));
+        Assert.NotNull(await MarkerOf(pullId));
+    }
+
+    [Fact]
+    public async SystemTask.Task A_filtered_pass_moves_keys_from_two_different_projects_named_on_one_branch()
+    {
+        // The design decision this whole feature turns on: the transition filters on
+        // REPOSITORIES, not projects. A repository can be linked to several projects, so a
+        // single head branch can legitimately name keys belonging to different projects. TS
+        // and XP are two distinct projects, both linked to the api repository. A pass filtered
+        // to that repository must move BOTH tasks and stamp the marker once — a project-scoped
+        // filter (or one that only handles the first key it finds) would strand XP-7 while
+        // still marking the pull request considered, leaving it forever unreachable.
+        var pullId = await AddPullRequest(_apiRepositoryId, 60, "TS-42-and-XP-7/two-projects");
+
+        await using var db = NewContext();
+        var result = await NewService(db, new AuditQueue())
+            .ApplyAsync(_companyId, "rigon", new[] { _apiRepositoryId }, default);
+
+        Assert.Equal(2, result.Value!.Transitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_xp7TaskId));
         Assert.NotNull(await MarkerOf(pullId));
     }
 

@@ -11,6 +11,7 @@ using TaskSphere.Infrastructure.Services;
 
 using Company = TaskSphere.Domain.Entities.Company;
 using GitHubInstallation = TaskSphere.Domain.Entities.GitHubInstallation;
+using GitHubPullRequest = TaskSphere.Domain.Entities.GitHubPullRequest;
 using GitHubRepository = TaskSphere.Domain.Entities.GitHubRepository;
 using Member = TaskSphere.Domain.Entities.Member;
 using Project = TaskSphere.Domain.Entities.Project;
@@ -624,5 +625,115 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
         // caller must handle: the board renders either way.
         Assert.True(result.IsSuccess);
         Assert.Equal(0, result.Value!.TasksTransitioned);
+        Assert.Equal(0, result.Value.RepositoriesRefreshed);
+    }
+
+    [Fact]
+    public async SystemTask.Task Repositories_not_linked_to_the_project_do_not_get_transitioned()
+    {
+        // Repository scoping must be enforced: a repository the project is NOT linked to
+        // must not have its pull requests transitioned, even if they match a task key.
+
+        // Use a fake API that doesn't return anything, so we rely on what's already seeded.
+        var api = new FakeGitHubApiClient { Fail = true };
+
+        // Seed a merged pull request in the web repository (linked to opt-out project, not TS).
+        // Its head branch names TS-42, so if scoping fails, the TS project's TS-42 task would
+        // be moved by a repository it has no link to.
+        await using (var seed = NewContext())
+        {
+            var pull = new GitHubPullRequest
+            {
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                Number = 8,
+                Title = "Unlinked Add the panel",
+                State = PullRequestState.Merged,
+                AuthorLogin = "rigon",
+                HeadBranch = "TS-42/add-the-panel",
+                OpenedAtUtc = DateTime.UtcNow.AddDays(-1),
+                GitHubUpdatedAtUtc = DateTime.UtcNow,
+                MergedAtUtc = DateTime.UtcNow,
+                HtmlUrl = "https://github.com/rigon-org/web/pull/8",
+            };
+            seed.GitHubPullRequests.Add(pull);
+            await seed.SaveChangesAsync();
+        }
+
+        // Refresh the TS project. It is linked only to the API repository, not the web one.
+        // The web repository's pull request must not be fetched or transitioned.
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // GitHub failure is handled gracefully: the board still renders.
+        Assert.True(result.IsSuccess);
+
+        // The TS-42 task must remain InProgress: the unlinked web repository's merged PR
+        // must not transition it (because the web repository is not linked to the TS project).
+        Assert.Equal(TaskStatuses.InProgress, await StatusOf(_ts42TaskId));
+
+        // The pull request's marker must be null: no transition was applied.
+        await using var check = NewContext();
+        var unlinkedPull = await check.GitHubPullRequests.SingleAsync(p => p.Id != 0 && p.GitHubRepositoryId == _webRepositoryId);
+        Assert.Null(unlinkedPull.MergeTransitionAppliedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_repository_save_failure_does_not_poison_other_repositories()
+    {
+        // A rejected save (e.g., due to a database constraint) leaves its entity tracked in
+        // the DbContext. Without DiscardPendingChanges(), the next repository's save
+        // re-attempts the bad write and fails too, turning one bad row into many.
+        var api = new FakeGitHubApiClient();
+
+        // Link the TS project to both API and web repositories.
+        await using (var seed = NewContext())
+        {
+            seed.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = _tsProjectId,
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        // Add a CHECK constraint that prevents the API repository's refresh timestamp from
+        // being saved. When the refresh loop tries to stamp it, SaveChangesAsync will throw.
+        await using (var constrain = NewContext())
+        {
+            await constrain.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE GitHubRepositories ADD CONSTRAINT CK_RefreshTest " +
+                $"CHECK (NOT ([Id] = {_apiRepositoryId} AND [PullRequestsRefreshedAtUtc] IS NOT NULL))");
+        }
+
+        try
+        {
+            // Refresh the TS project. It is linked to both API and web. The API refresh will
+            // fail when trying to save its timestamp, but the web refresh should succeed.
+            await using var db = NewContext();
+            var result = await NewService(db, api).RefreshAsync(
+                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+            Assert.True(result.IsSuccess);
+
+            // The API repository must NOT have its timestamp stamped (constraint prevented it).
+            await using var check = NewContext();
+            var apiRepo = await check.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+            Assert.Null(apiRepo.PullRequestsRefreshedAtUtc);
+
+            // The web repository MUST have its timestamp stamped (the earlier failure was discarded).
+            var webRepo = await check.GitHubRepositories.SingleAsync(r => r.Id == _webRepositoryId);
+            Assert.NotNull(webRepo.PullRequestsRefreshedAtUtc);
+        }
+        finally
+        {
+            // Clean up the constraint so the fixture is not left altered.
+            await using var cleanup = NewContext();
+            await cleanup.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE GitHubRepositories DROP CONSTRAINT CK_RefreshTest");
+        }
     }
 }

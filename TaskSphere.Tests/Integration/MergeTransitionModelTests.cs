@@ -107,14 +107,22 @@ public class MergeTransitionModelTests : IAsyncLifetime
     {
         // A source-level guard. The upsert overwrites every GitHub-sourced field by design;
         // this column is TaskSphere's own and must survive a re-sync. A behavioural test would
-        // need the whole HTTP fake stack, so this pins the one line that would break it.
-        var path = Path.Combine(
+        // need the whole HTTP fake stack, so this pins the lines that would break it.
+        // The upsert lives in GitHubPullRequestMirror; the sync service must not bring it back.
+        var mirrorPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..",
+            "TaskSphere.Infrastructure", "Services", "GitHubPullRequestMirror.cs");
+
+        var syncPath = Path.Combine(
             AppContext.BaseDirectory,
             "..", "..", "..", "..",
             "TaskSphere.Infrastructure", "Services", "GitHubActivitySyncService.cs");
 
-        var source = await File.ReadAllTextAsync(Path.GetFullPath(path));
+        var mirrorSource = await File.ReadAllTextAsync(Path.GetFullPath(mirrorPath));
+        var syncSource = await File.ReadAllTextAsync(Path.GetFullPath(syncPath));
 
-        Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", source);
+        Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", mirrorSource);
+        Assert.DoesNotContain("existing.MergeTransitionAppliedAtUtc", syncSource);
     }
 }

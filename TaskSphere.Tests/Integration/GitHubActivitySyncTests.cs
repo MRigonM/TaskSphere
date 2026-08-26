@@ -210,9 +210,10 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // A real transition service, not a fake: it reads the same mirror this sync just
         // wrote, and nothing in these tests seeds a merged pull request with a null marker.
         var transitions = new MergeTransitionService(uow, new AuditQueue());
-        var mirror = new GitHubPullRequestMirror(api, uow);
+        var pullMirror = new GitHubPullRequestMirror(api, uow);
+        var branchMirror = new GitHubBranchMirror(api, uow);
 
-        return await new GitHubActivitySyncService(api, uow, resolver, transitions, mirror)
+        return await new GitHubActivitySyncService(api, uow, resolver, transitions, pullMirror, branchMirror)
             .SyncCompanyAsync(_companyId, "rigon");
     }
 

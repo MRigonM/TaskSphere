@@ -507,27 +507,17 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
     }
 
     [Fact]
-    public async SystemTask.Task A_cooldown_hit_costs_no_resolver_run()
+    public async SystemTask.Task When_all_due_repositories_fail_the_resolver_does_not_run()
     {
-        var api = new FakeGitHubApiClient();
+        // The refreshed > 0 guard's only load-bearing scenario: repositories are due (so the
+        // loop runs), but all fail (so refreshed stays 0). Without the guard, the resolver
+        // would run anyway over a company-wide pass that fetched nothing.
 
-        await using (var first = NewContext())
-            await NewService(first, api).RefreshAsync(
-                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+        var api = new FakeGitHubApiClient { Fail = true };
 
-        // After the first refresh, the task must be linked to the branch.
-        await using (var check1 = NewContext())
-        {
-            var link1 = await check1.TaskLinks
-                .FirstOrDefaultAsync(l => l.TaskId == _ts42TaskId &&
-                                          l.GitHubBranchId.HasValue);
-            Assert.NotNull(link1);
-        }
-
-        int callsAfterFirstRefresh = api.Calls.Count;
-
-        // Seed a new task TS-99 and a branch with its name. The resolver would find and link
-        // them, so a second refresh inside the cooldown can only link them if the resolver ran.
+        // Seed a task TS-99 and a branch with its name, with no link yet. The resolver would
+        // find and link them if it ran. This test asserts the resolver does NOT run when all
+        // due repositories fail.
         int ts99TaskId;
         await using (var seed = NewContext())
         {
@@ -554,18 +544,43 @@ public class ProjectActivityRefreshTests : IAsyncLifetime
             await seed.SaveChangesAsync();
         }
 
-        // Refresh again, inside the cooldown window. The resolver is NOT run on a cooldown hit.
-        await using var second = NewContext();
-        await NewService(second, api).RefreshAsync(
+        // Refresh. API fails on both branches and pulls. No repository is refreshed, so
+        // refreshed == 0.
+        await using var db = NewContext();
+        var result = await NewService(db, api).RefreshAsync(
             _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
 
-        // The cooldown was hit: no API call was made. The resolver did not run, so the TS-99
-        // task remains unlinked to its branch.
-        Assert.Equal(callsAfterFirstRefresh, api.Calls.Count);
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
 
+        // Resolver did not run (because refreshed == 0), so no link was created for TS-99.
+        // If the refreshed > 0 guard is removed, this test will fail.
         await using var check = NewContext();
         var link99 = await check.TaskLinks.FirstOrDefaultAsync(l => l.TaskId == ts99TaskId);
         Assert.Null(link99);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_second_refresh_inside_the_cooldown_window_makes_no_call()
+    {
+        var api = new FakeGitHubApiClient();
+
+        await using (var first = NewContext())
+            await NewService(first, api).RefreshAsync(
+                _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        Assert.Equal(2, api.Calls.Count);
+
+        await using var second = NewContext();
+        var result = await NewService(second, api).RefreshAsync(
+            _companyId, _tsProjectId, "rigon", isCompanyAdmin: true, "rigon", default);
+
+        // The cooldown: the second refresh in the same window hits the repositories.Count == 0
+        // early return and returns before the loop. No API call, no resolver run. The
+        // refreshed > 0 guard is dead code on this path.
+        Assert.Equal(2, api.Calls.Count);
+        Assert.False(result.Value!.Refreshed);
+        Assert.Equal(0, result.Value.RepositoriesRefreshed);
     }
 
     [Fact]

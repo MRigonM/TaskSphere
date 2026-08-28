@@ -155,7 +155,9 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
                     // The SAME tuple shape the commit pass uses — ViaGitHubBranchId is not part
                     // of it, and must never become part of it. Widening the tuple would let a
                     // direct link and an inherited one for one commit both look new, and they
-                    // collide on IX_TaskLinks_TaskId_CommitId. Task 7 pins this.
+                    // collide on IX_TaskLinks_TaskId_CommitId. Task 7 pins this, via
+                    // ACommitThatNamesTheTaskAndSitsOnItsBranch_IsOneRowMarkedDirect — the
+                    // collision happens inside a single resolve, not across two runs.
                     //
                     // When two linked branches are both ahead of the same commit for the same
                     // task, only one link can exist — IX_TaskLinks_TaskId_CommitId is unique —

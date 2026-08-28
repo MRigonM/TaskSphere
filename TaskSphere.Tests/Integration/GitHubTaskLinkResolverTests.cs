@@ -948,9 +948,11 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
         var second = await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
 
-        // A re-run must insert nothing. If the `existing` tuple ever gains ViaGitHubBranchId, the
-        // second run's inherited tuple stops matching the stored one and the insert violates
-        // IX_TaskLinks_TaskId_CommitId with a DbUpdateException out of the whole sync.
+        // A re-run must insert nothing: the inherited link is seeded back out of the database on
+        // run two and recomputes to the same tuple. This is an idempotency test, not the tuple-width
+        // guard — a widened `existing` seeds ViaGitHubBranchId back too, so this scenario still
+        // matches itself run-over-run. ACommitThatNamesTheTaskAndSitsOnItsBranch_IsOneRowMarkedDirect
+        // is what fails if the tuple is widened, and it fails inside a single resolve.
         Assert.Equal(0, second.LinksCreated);
         Assert.Single(await db.TaskLinks.Where(l => l.GitHubCommitId == commit.Id).ToListAsync());
     }

@@ -1579,4 +1579,55 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         await using var db = NewContext();
         Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
     }
+
+    [Fact]
+    public async SystemTask.Task ACommitAlreadyInTheMirror_StillEarnsAJoinRowOnALaterBranch()
+    {
+        // Run 1: the commit arrives on main only, so it is not ahead of anything.
+        var first = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa")))
+            .On("sha=main", Commits(("c1", "feat: groundwork", "MRigonM")));
+
+        await Sync(first);
+
+        await using (var db = NewContext())
+            Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
+
+        // Run 2: a branch appears carrying c1, and main has since moved on without it — a branch
+        // cut from older work. c1 is already in the mirror, so the upsert takes the "existing"
+        // path. If that path skips the join write, inheritance only ever works for commits whose
+        // FIRST sighting was on the feature branch.
+        var second = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "zzz"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(("c9", "chore: unrelated", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(("c1", "feat: groundwork", "MRigonM")));
+
+        await Sync(second);
+
+        await using var after = NewContext();
+        var row = Assert.Single(await after.GitHubBranchCommits
+            .Include(bc => bc.Commit)
+            .Include(bc => bc.Branch)
+            .ToListAsync());
+
+        Assert.Equal("c1", row.Commit!.Sha);
+        Assert.Equal("TS-42-fix", row.Branch!.Name);
+    }
+
+    [Fact]
+    public async SystemTask.Task RunningTheSyncTwice_DoesNotDuplicateJoinRows()
+    {
+        static FakeApiClient Api() => new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(("shared1", "chore: bump deps", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(
+                ("shared1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(Api());
+        await Sync(Api());
+
+        await using var db = NewContext();
+        Assert.Single(await db.GitHubBranchCommits.ToListAsync());
+    }
 }

@@ -829,8 +829,9 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
         var result = await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
 
+        Assert.Equal(2, result.LinksCreated);   // inheritance ran
         // One key was read in this run — the branch name. Inheritance reads no text, so counting
         // it as a key seen would make the sync summary lie about how much GitHub data was scanned.
-        Assert.Equal(1, result.KeysSeen);
+        Assert.Equal(1, result.KeysSeen);       // and read no keys doing it
     }
 }

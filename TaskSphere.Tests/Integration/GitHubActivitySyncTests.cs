@@ -1723,5 +1723,11 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         await using var final = NewContext();
         Assert.Single(await final.TaskLinks.Where(l => l.ViaGitHubBranchId != null).ToListAsync());
+
+        // Add-only at the STORAGE layer, which is the half the TaskLink assertion above cannot
+        // see: nothing ever deletes a TaskLink, so a future change that pruned no-longer-ahead
+        // join rows would leave run 1's link in place and this test green while the decision it
+        // is named for had been reversed underneath it.
+        Assert.Single(await final.GitHubBranchCommits.ToListAsync());
     }
 }

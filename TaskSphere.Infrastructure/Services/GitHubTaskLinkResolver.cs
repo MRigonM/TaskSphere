@@ -156,6 +156,11 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
                     // of it, and must never become part of it. Widening the tuple would let a
                     // direct link and an inherited one for one commit both look new, and they
                     // collide on IX_TaskLinks_TaskId_CommitId. Task 7 pins this.
+                    //
+                    // When two linked branches are both ahead of the same commit for the same
+                    // task, only one link can exist — IX_TaskLinks_TaskId_CommitId is unique —
+                    // so the surviving ViaGitHubBranchId is whichever branch this enumeration
+                    // reached first. The attribution is arbitrary; the link is not.
                     if (!existing.Add((taskId, commitId, null, null)))
                         continue;
 

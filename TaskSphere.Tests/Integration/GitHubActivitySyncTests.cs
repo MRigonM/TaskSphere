@@ -1654,6 +1654,30 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async SystemTask.Task WhenTheDefaultBranchListingIsTruncated_NoJoinRowsAreWritten_ButCommitsStillIngest()
+    {
+        // A per_page=100 listing that advertises rel="next" holds only the newest page: the
+        // set difference against defaultShas would then be computed against an incomplete set,
+        // and any commit on the branch's own older history that fell off the page would be
+        // reported as "ahead" of main. Asserting the sync merely succeeded would not catch it.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(("main1", "wire up the login form", "MRigonM")), "<https://api.github.com/...>; rel=\"next\"")
+            .On("sha=TS-42-fix", Commits(("ahead1", "wire up the login form", "MRigonM")));
+
+        var result = await Sync(api);
+
+        await using var db = NewContext();
+
+        Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
+
+        // The commits themselves are unaffected — only inheritance is skipped.
+        Assert.Contains(await db.GitHubCommits.ToListAsync(), c => c.Sha == "main1");
+        Assert.Contains(await db.GitHubCommits.ToListAsync(), c => c.Sha == "ahead1");
+        Assert.Contains(result.Value!.Failures, f => f.Branch == "main");
+    }
+
+    [Fact]
     public async SystemTask.Task WhenTheDefaultBranchIsAbsentFromTheBranchList_NoJoinRowsAreWritten()
     {
         // DefaultBranch is "main" on the seeded repository, but GitHub reports only the feature

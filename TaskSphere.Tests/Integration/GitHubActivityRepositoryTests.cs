@@ -318,12 +318,14 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         Assert.NotNull(uow.GitHubCommits);
         Assert.NotNull(uow.GitHubBranches);
         Assert.NotNull(uow.GitHubPullRequests);
+        Assert.NotNull(uow.GitHubBranchCommits);
         Assert.NotNull(uow.TaskLinks);
 
         // Lazy, and cached: the same instance on a second read, like every other property.
         Assert.Same(uow.GitHubCommits, uow.GitHubCommits);
         Assert.Same(uow.GitHubBranches, uow.GitHubBranches);
         Assert.Same(uow.GitHubPullRequests, uow.GitHubPullRequests);
+        Assert.Same(uow.GitHubBranchCommits, uow.GitHubBranchCommits);
         Assert.Same(uow.TaskLinks, uow.TaskLinks);
     }
 

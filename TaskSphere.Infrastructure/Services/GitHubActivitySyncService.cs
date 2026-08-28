@@ -183,7 +183,8 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         ordered.AddRange(branches.Where(b => !string.Equals(b, defaultName, StringComparison.OrdinalIgnoreCase)));
 
         // Empty is not "nothing is ahead" — it is "everything is ahead", which is the outcome
-        // the whole definition exists to avoid. Task 5 makes that failure closed.
+        // the whole definition exists to avoid. The guards below (a failed, unreadable, missing,
+        // or truncated default-branch listing) keep that failure closed.
         var defaultShas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var inheritanceEnabled = defaultName is not null;
 
@@ -242,6 +243,17 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
                     inheritanceEnabled = false;
 
                 continue;
+            }
+
+            // The set difference is only correct on a complete default set: a partial page
+            // cannot distinguish "not on the default branch" from "on the default branch's
+            // page 2". Failing open here would claim the default branch's own older history
+            // as inherited — the "everything reachable" outcome the whole definition exists
+            // to avoid. Commits still ingest below; only inheritance is disabled.
+            if (isDefault && response.Value!.LinkHeader?.Contains("rel=\"next\"") == true)
+            {
+                failures.Add(new SyncFailureDto(fullName, $"GitHub's commit history for {fullName} on {branch} is more than one page; inheritance was skipped.", branch));
+                inheritanceEnabled = false;
             }
 
             foreach (var commit in payload)

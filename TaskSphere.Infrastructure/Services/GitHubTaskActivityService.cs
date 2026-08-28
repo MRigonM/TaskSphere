@@ -87,6 +87,15 @@ public class GitHubTaskActivityService : IGitHubTaskActivityService
             .OrderByDescending(p => p.OpenedAtUtc)
             .ToListAsync(cancellationToken);
 
+        // Both halves are already in hand: `links` is materialized above, and every via-branch
+        // necessarily has its OWN TaskLink on this task — inheritance only flows through a
+        // branch already linked — so it is already in `branches`. No extra query.
+        var viaBranchIdByCommitId = links
+            .Where(l => l.GitHubCommitId is not null && l.ViaGitHubBranchId is not null)
+            .ToDictionary(l => l.GitHubCommitId!.Value, l => l.ViaGitHubBranchId!.Value);
+
+        var branchNamesById = branches.ToDictionary(b => b.Id, b => b.Name);
+
         return Result<TaskGitHubActivityDto>.Success(new TaskGitHubActivityDto(
             commits
                 .Where(c => repositoryNames.ContainsKey(c.GitHubRepositoryId))
@@ -98,7 +107,11 @@ public class GitHubTaskActivityService : IGitHubTaskActivityService
                     c.AuthorLogin,
                     c.CommittedAtUtc,
                     c.HtmlUrl,
-                    repositoryNames[c.GitHubRepositoryId]))
+                    repositoryNames[c.GitHubRepositoryId],
+                    viaBranchIdByCommitId.TryGetValue(c.Id, out var viaId)
+                        && branchNamesById.TryGetValue(viaId, out var viaName)
+                            ? viaName
+                            : null))
                 .ToList(),
             branches
                 .Where(b => repositoryNames.ContainsKey(b.GitHubRepositoryId))

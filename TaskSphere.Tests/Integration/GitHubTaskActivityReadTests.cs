@@ -566,4 +566,53 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Commits);
     }
+
+    [Fact]
+    public async SystemTask.Task AnInheritedCommit_CarriesTheNameOfTheBranchThatConferredIt()
+    {
+        await using var db = NewContext();
+
+        // Two commits on one task: one named the task, one was inherited. The panel has to tell
+        // them apart, and the read must name WHICH branch — a bare flag could not.
+        var branch = new TaskSphere.Domain.Entities.GitHubBranch
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _repositoryId,
+            Name = "TS-42-login",
+            HeadSha = "bbb",
+        };
+        db.GitHubBranches.Add(branch);
+
+        var direct = NewCommit("direct1", "TS-42 add the form");
+        var inherited = NewCommit("ahead1", "wire up the login form");
+        db.GitHubCommits.AddRange(direct, inherited);
+        await db.SaveChangesAsync();
+
+        db.TaskLinks.AddRange(
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubBranchId = branch.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = direct.Id },
+            new TaskLink { CompanyId = _companyId, TaskId = _taskId, GitHubCommitId = inherited.Id, ViaGitHubBranchId = branch.Id });
+        await db.SaveChangesAsync();
+
+        var result = await Read(isCompanyAdmin: true);
+
+        var commits = result.Value!.Commits;
+
+        // The pairing, not the presence: assert each sha carries the right provenance. Asserting
+        // that "TS-42-login" appears somewhere would pass even if it were on the wrong commit.
+        // Single-with-predicate rather than indexing, because the fixture seeds records of its own.
+        Assert.Equal("TS-42-login", Assert.Single(commits, c => c.Sha == "ahead1").ViaBranchName);
+        Assert.Null(Assert.Single(commits, c => c.Sha == "direct1").ViaBranchName);
+    }
+
+    private TaskSphere.Domain.Entities.GitHubCommit NewCommit(string sha, string message) => new()
+    {
+        CompanyId = _companyId,
+        GitHubRepositoryId = _repositoryId,
+        Sha = sha,
+        Message = message,
+        AuthorName = "Rigon",
+        CommittedAtUtc = DateTime.UtcNow,
+        HtmlUrl = $"https://github.com/rigon-org/api/commit/{sha}",
+    };
 }

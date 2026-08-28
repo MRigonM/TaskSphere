@@ -26,7 +26,13 @@ public record TaskCommitDto(
     string? AuthorLogin,
     DateTime CommittedAtUtc,
     string HtmlUrl,
-    string RepositoryFullName);
+    string RepositoryFullName,
+    /// <summary>
+    /// Null when the commit's own message named the task. Set to the branch that conferred it
+    /// when the link was inherited — the commit itself never mentions the task, and without
+    /// this the panel shows it with nothing explaining why it is there.
+    /// </summary>
+    string? ViaBranchName);
 
 /// <summary>
 /// <c>IsDeleted</c> is rendered, not filtered: a branch that GitHub no longer reports is shown

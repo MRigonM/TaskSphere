@@ -1531,8 +1531,11 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         // "main" reaches shared1; the feature branch reaches shared1 AND ahead1. Only ahead1 is
         // ahead of default, so only ahead1 earns a join row. This is the whole feature in one case.
+        // The feature branch is listed FIRST on purpose: payload order and required processing
+        // order must disagree, or the commitUrls[0] assertion below passes for the wrong reason
+        // and the "default branch is listed first" behaviour is unguarded.
         var api = new FakeApiClient()
-            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("/repos/rigon-org/api/branches", Branches(("TS-42-fix", "bbb"), ("main", "aaa")))
             .On("sha=main", Commits(("shared1", "chore: bump deps", "MRigonM")))
             .On("sha=TS-42-fix", Commits(
                 ("shared1", "chore: bump deps", "MRigonM"),

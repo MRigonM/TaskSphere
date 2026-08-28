@@ -1630,4 +1630,61 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         await using var db = NewContext();
         Assert.Single(await db.GitHubBranchCommits.ToListAsync());
     }
+
+    [Fact]
+    public async SystemTask.Task WhenTheDefaultBranchListingFails_NoJoinRowsAreWritten_ButCommitsStillIngest()
+    {
+        // Failing OPEN here is the worst outcome in the feature: an empty default set makes every
+        // commit on every branch "ahead", which is the full-history inheritance the definition
+        // exists to prevent. Asserting the sync merely succeeded would not catch it.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .Fail("sha=main", new Error("GitHub.SyncFailed", "GitHub is unavailable."))
+            .On("sha=TS-42-fix", Commits(("ahead1", "wire up the login form", "MRigonM")));
+
+        var result = await Sync(api);
+
+        await using var db = NewContext();
+
+        Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
+
+        // The commits themselves are unaffected — only inheritance is skipped.
+        Assert.Contains(await db.GitHubCommits.ToListAsync(), c => c.Sha == "ahead1");
+        Assert.Contains(result.Value!.Failures, f => f.Branch == "main");
+    }
+
+    [Fact]
+    public async SystemTask.Task WhenTheDefaultBranchIsAbsentFromTheBranchList_NoJoinRowsAreWritten()
+    {
+        // DefaultBranch is "main" on the seeded repository, but GitHub reports only the feature
+        // branch. Nothing to difference against, so nothing may be claimed as ahead.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("TS-42-fix", "bbb")))
+            .On("sha=TS-42-fix", Commits(("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task TheDefaultBranchIsMatchedCaseInsensitively()
+    {
+        // GitHub reports "Main"; the repository's DefaultBranch is "main". Ordinally these differ,
+        // and treating them as different branches means main's own history is claimed as ahead —
+        // the 2026-08-16 collation defect, one table over.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("Main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=Main", Commits(("shared1", "chore: bump deps", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(
+                ("shared1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        var row = Assert.Single(await db.GitHubBranchCommits.Include(bc => bc.Commit).ToListAsync());
+        Assert.Equal("ahead1", row.Commit!.Sha);
+    }
 }

@@ -209,6 +209,12 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             if (!response.IsSuccess)
             {
                 failures.Add(new SyncFailureDto(fullName, response.Errors[0].Description, branch));
+
+                // Fail closed: with no default listing, "not in defaultShas" would be true of
+                // every commit in the repository.
+                if (isDefault)
+                    inheritanceEnabled = false;
+
                 continue;
             }
 
@@ -221,12 +227,20 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             catch (JsonException)
             {
                 failures.Add(new SyncFailureDto(fullName, $"GitHub returned an unreadable commits response for {fullName}.", branch));
+
+                if (isDefault)
+                    inheritanceEnabled = false;
+
                 continue;
             }
 
             if (payload is null)
             {
                 failures.Add(new SyncFailureDto(fullName, $"GitHub returned no commits list for {fullName}.", branch));
+
+                if (isDefault)
+                    inheritanceEnabled = false;
+
                 continue;
             }
 

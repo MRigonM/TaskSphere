@@ -834,4 +834,124 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
         // it as a key seen would make the sync summary lie about how much GitHub data was scanned.
         Assert.Equal(1, result.KeysSeen);       // and read no keys doing it
     }
+
+    [Fact]
+    public async SystemTask.Task ACommitThatNamesTheTaskAndSitsOnItsBranch_IsOneRowMarkedDirect()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+
+        var branch = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-42-login", HeadSha = "bbb" };
+        var commit = new GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _apiRepositoryId,
+            Sha = "both1",
+            Message = "TS-42 wire up the login form",   // names the task ITSELF
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/both1",
+        };
+        db.GitHubBranches.Add(branch);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        db.GitHubBranchCommits.Add(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branch.Id,
+            GitHubCommitId = commit.Id,
+        });
+        await db.SaveChangesAsync();
+
+        await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+
+        // ONE row — IX_TaskLinks_TaskId_CommitId is unique — and it must read as direct. If the
+        // passes ever reorder, this flips to the branch id and the panel starts claiming a commit
+        // was inherited when its own message named the task.
+        var link = Assert.Single(await db.TaskLinks.Where(l => l.GitHubCommitId == commit.Id).ToListAsync());
+        Assert.Null(link.ViaGitHubBranchId);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitAheadOnTwoLinkedBranches_ReachesBothTasks()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+
+        // The case the join table exists for: TS-51's branch was cut from TS-42's, so one commit
+        // is ahead of default on both. A column on GitHubCommit could record only one of them.
+        var branch42 = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-42-login", HeadSha = "bbb" };
+        var branch51 = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-51-signup", HeadSha = "ccc" };
+        var commit = new GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _apiRepositoryId,
+            Sha = "shared-ahead",
+            Message = "extract the auth form base",
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/shared-ahead",
+        };
+        db.GitHubBranches.AddRange(branch42, branch51);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        db.GitHubBranchCommits.AddRange(
+            new TaskSphere.Domain.Entities.GitHubBranchCommit { CompanyId = _companyId, GitHubBranchId = branch42.Id, GitHubCommitId = commit.Id },
+            new TaskSphere.Domain.Entities.GitHubBranchCommit { CompanyId = _companyId, GitHubBranchId = branch51.Id, GitHubCommitId = commit.Id });
+        await db.SaveChangesAsync();
+
+        await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+
+        var links = await db.TaskLinks
+            .Where(l => l.GitHubCommitId == commit.Id)
+            .OrderBy(l => l.TaskId)
+            .ToListAsync();
+
+        // Assert the PAIRING, not the count: two rows with the right task ids and the right via
+        // branches. Counting two would pass if both rows belonged to the same task.
+        Assert.Equal(2, links.Count);
+        Assert.Contains(links, l => l.TaskId == _ts42TaskId && l.ViaGitHubBranchId == branch42.Id);
+        Assert.Contains(links, l => l.TaskId == _ts51TaskId && l.ViaGitHubBranchId == branch51.Id);
+    }
+
+    [Fact]
+    public async SystemTask.Task RunningTheResolverTwice_CreatesNoSecondInheritedLink()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+
+        var branch = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-42-login", HeadSha = "bbb" };
+        var commit = new GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _apiRepositoryId,
+            Sha = "ahead1",
+            Message = "wire up the login form",
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/ahead1",
+        };
+        db.GitHubBranches.Add(branch);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        db.GitHubBranchCommits.Add(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branch.Id,
+            GitHubCommitId = commit.Id,
+        });
+        await db.SaveChangesAsync();
+
+        await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+        var second = await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+
+        // A re-run must insert nothing. If the `existing` tuple ever gains ViaGitHubBranchId, the
+        // second run's inherited tuple stops matching the stored one and the insert violates
+        // IX_TaskLinks_TaskId_CommitId with a DbUpdateException out of the whole sync.
+        Assert.Equal(0, second.LinksCreated);
+        Assert.Single(await db.TaskLinks.Where(l => l.GitHubCommitId == commit.Id).ToListAsync());
+    }
 }

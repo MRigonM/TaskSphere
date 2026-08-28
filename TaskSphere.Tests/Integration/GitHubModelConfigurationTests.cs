@@ -223,4 +223,39 @@ public class GitHubModelConfigurationTests : IAsyncLifetime
             Assert.True(ignored.Company!.IsDeleted);
         }
     }
+
+    [Fact]
+    public void GitHubBranchCommit_HasFilteredUniqueIndexOnBranchAndCommit()
+    {
+        using var db = NewContext();
+        var entity = db.Model.FindEntityType(typeof(TaskSphere.Domain.Entities.GitHubBranchCommit))!;
+
+        var index = entity.GetIndexes().Single(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(new[] { "GitHubBranchId", "GitHubCommitId" }));
+
+        Assert.True(index.IsUnique);
+        Assert.Equal("IX_GitHubBranchCommits_BranchId_CommitId", index.GetDatabaseName());
+
+        // Filtered, not unfiltered: a join row is a TaskSphere-owned derived row like TaskLink,
+        // not a GitHub identity like GitHubCommit. Recomputable, so nothing needs reviving — and
+        // filtering it is what keeps IgnoreQueryFilters out of this whole slice.
+        Assert.Equal("[IsDeleted] = 0", index.GetFilter());
+    }
+
+    [Fact]
+    public void TaskLink_ViaGitHubBranchId_IsNullableAndNotPartOfAnyUniqueIndex()
+    {
+        using var db = NewContext();
+        var entity = db.Model.FindEntityType(typeof(TaskSphere.Domain.Entities.TaskLink))!;
+
+        var via = entity.FindProperty("ViaGitHubBranchId")!;
+        Assert.True(via.IsNullable);
+
+        // The load-bearing half. If ViaGitHubBranchId ever joins IX_TaskLinks_TaskId_CommitId,
+        // a directly-named commit and an inherited one stop colliding — and precedence, which
+        // the whole design rests on, silently stops existing.
+        Assert.DoesNotContain(
+            entity.GetIndexes().Where(i => i.IsUnique),
+            i => i.Properties.Any(p => p.Name == "ViaGitHubBranchId"));
+    }
 }

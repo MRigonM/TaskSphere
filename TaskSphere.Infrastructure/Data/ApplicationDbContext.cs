@@ -43,6 +43,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<GitHubCommit> GitHubCommits { get; set; }
     public DbSet<GitHubBranch> GitHubBranches { get; set; }
     public DbSet<GitHubPullRequest> GitHubPullRequests { get; set; }
+    public DbSet<GitHubBranchCommit> GitHubBranchCommits { get; set; }
     public DbSet<TaskLink> TaskLinks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -429,6 +430,37 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
             entity.HasOne<GitHubPullRequest>()
                 .WithMany()
                 .HasForeignKey(l => l.GitHubPullRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A SECOND relationship to GitHubBranch on a different FK. Distinct from the
+            // GitHubBranchId one above — that says "this link IS a branch", this says "this
+            // link came VIA a branch".
+            entity.HasOne<GitHubBranch>()
+                .WithMany()
+                .HasForeignKey(l => l.ViaGitHubBranchId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GitHubBranchCommit>(entity =>
+        {
+            entity.HasQueryFilter(bc => !bc.IsDeleted);
+
+            // Filtered, following TaskLink rather than the mirror tables: this is a derived
+            // TaskSphere row, not a GitHub identity, so nothing needs to be revived and no
+            // lookup in this slice needs IgnoreQueryFilters.
+            entity.HasIndex(bc => new { bc.GitHubBranchId, bc.GitHubCommitId })
+                .IsUnique()
+                .HasFilter("[IsDeleted] = 0")
+                .HasDatabaseName("IX_GitHubBranchCommits_BranchId_CommitId");
+
+            entity.HasOne(bc => bc.Branch)
+                .WithMany()
+                .HasForeignKey(bc => bc.GitHubBranchId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(bc => bc.Commit)
+                .WithMany()
+                .HasForeignKey(bc => bc.GitHubCommitId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

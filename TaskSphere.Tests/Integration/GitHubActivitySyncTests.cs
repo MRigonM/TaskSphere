@@ -1525,4 +1525,55 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         Assert.Equal("TS-42-renamed", pull.HeadBranch);
     }
+
+    [Fact]
+    public async SystemTask.Task DefaultBranchIsListedFirst_AndCommitsAheadOfItGetJoinRows()
+    {
+        // "main" reaches shared1; the feature branch reaches shared1 AND ahead1. Only ahead1 is
+        // ahead of default, so only ahead1 earns a join row. This is the whole feature in one case.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(("shared1", "chore: bump deps", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(
+                ("shared1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(api);
+
+        // Ordering is behavioural and invisible in the schema: the default branch's listing has to
+        // be in hand before any other branch is differenced against it.
+        var commitUrls = api.RequestedUrls.Where(u => u.Contains("/commits", StringComparison.Ordinal)).ToList();
+        Assert.Contains("sha=main", commitUrls[0]);
+
+        await using var db = NewContext();
+        var rows = await db.GitHubBranchCommits
+            .Include(bc => bc.Branch)
+            .Include(bc => bc.Commit)
+            .ToListAsync();
+
+        var row = Assert.Single(rows);
+        Assert.Equal("TS-42-fix", row.Branch!.Name);
+        Assert.Equal("ahead1", row.Commit!.Sha);
+        Assert.Equal(_companyId, row.CompanyId);
+    }
+
+    [Fact]
+    public async SystemTask.Task CommitsReachableFromTheDefaultBranch_GetNoJoinRow()
+    {
+        // The trap the definition exists to avoid: a branch cut from main reaches all of main's
+        // history. If this fails, a task inherits every commit the company made in 30 days.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(
+                ("old1", "feat: something unrelated", "MRigonM"),
+                ("old2", "fix: also unrelated", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(
+                ("old1", "feat: something unrelated", "MRigonM"),
+                ("old2", "fix: also unrelated", "MRigonM")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        Assert.Empty(await db.GitHubBranchCommits.ToListAsync());
+    }
 }

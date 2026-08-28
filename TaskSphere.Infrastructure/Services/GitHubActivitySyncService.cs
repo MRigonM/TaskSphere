@@ -9,6 +9,7 @@ using TaskSphere.Domain.Interfaces;
 
 // The entities, not the namespace: TaskSphere.Domain.Entities.Task shadows Task otherwise.
 using GitHubBranch = TaskSphere.Domain.Entities.GitHubBranch;
+using GitHubBranchCommit = TaskSphere.Domain.Entities.GitHubBranchCommit;
 using GitHubInstallation = TaskSphere.Domain.Entities.GitHubInstallation;
 
 namespace TaskSphere.Infrastructure.Services;
@@ -97,7 +98,8 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             // the commits pass reports per branch, so the other branches' commits are still
             // counted and the repository still counts as synced.
             var (inserted, commitFailures) = await SyncCommitsAsync(
-                installation, repository.Id, repository.FullName, branchResult.Value!, since, cancellationToken);
+                installation, repository.Id, repository.FullName, branchResult.Value!,
+                repository.DefaultBranch, since, cancellationToken);
 
             failures.AddRange(commitFailures);
             commitCount += inserted;
@@ -160,14 +162,34 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
         int repositoryRowId,
         string fullName,
         List<string> branches,
+        string defaultBranch,
         DateTime since,
         CancellationToken cancellationToken)
     {
         var inserted = 0;
         var failures = new List<SyncFailureDto>();
 
-        foreach (var branch in branches)
+        // Case-insensitively, because GitHubBranches.Name is SQL_Latin1_General_CP1_CI_AS and
+        // comparing ordinally here is the 2026-08-16 soft-delete defect in a new place.
+        var defaultName = branches.FirstOrDefault(b => string.Equals(b, defaultBranch, StringComparison.OrdinalIgnoreCase));
+
+        // Default first, explicitly rather than by sorting on a bool: every later branch is
+        // differenced against its shas, so it must already be in hand.
+        var ordered = new List<string>();
+
+        if (defaultName is not null)
+            ordered.Add(defaultName);
+
+        ordered.AddRange(branches.Where(b => !string.Equals(b, defaultName, StringComparison.OrdinalIgnoreCase)));
+
+        // Empty is not "nothing is ahead" — it is "everything is ahead", which is the outcome
+        // the whole definition exists to avoid. Task 5 makes that failure closed.
+        var defaultShas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var inheritanceEnabled = defaultName is not null;
+
+        foreach (var branch in ordered)
         {
+            var isDefault = string.Equals(branch, defaultName, StringComparison.OrdinalIgnoreCase);
             // Formatted invariantly, not interpolated: ':' in a custom format string is the
             // culture's TIME SEPARATOR, so `$"{since:...HH:mm:ss}"` emits "10.00.00Z" under a
             // culture like fi-FI and GitHub rejects the timestamp. Proven with a probe, not
@@ -213,8 +235,13 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
                 if (string.IsNullOrEmpty(commit.Sha))
                     continue;
 
+                if (isDefault)
+                    defaultShas.Add(commit.Sha);
+
                 var existing = await _unitOfWork.GitHubCommits
                     .GetByShaIncludingDeletedAsync(repositoryRowId, commit.Sha, cancellationToken);
+
+                int commitRowId;
 
                 if (existing is not null)
                 {
@@ -225,29 +252,70 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
                         existing.IsDeleted = false;
                         existing.DeletedAt = null;
                         await _unitOfWork.GitHubCommits.Update(existing, cancellationToken);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
                     }
 
-                    continue;
+                    commitRowId = existing.Id;
+                }
+                else
+                {
+                    var added = new TaskSphere.Domain.Entities.GitHubCommit
+                    {
+                        GitHubRepositoryId = repositoryRowId,
+                        CompanyId = installation.CompanyId,
+                        Sha = commit.Sha,
+                        Message = commit.Commit?.Message ?? "",
+                        AuthorName = commit.Commit?.Author?.Name ?? "",
+                        AuthorLogin = commit.Author?.Login,
+                        CommittedAtUtc = commit.Commit?.Author?.Date ?? DateTime.UtcNow,
+                        HtmlUrl = commit.HtmlUrl ?? "",
+                    };
+
+                    await _unitOfWork.GitHubCommits.AddAsync(added, cancellationToken);
+                    inserted++;
+
+                    // Saved per commit so the next iteration's GetByShaIncludingDeletedAsync
+                    // sees it: the same sha can arrive twice within one run, from two branches.
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                    commitRowId = added.Id;
                 }
 
-                await _unitOfWork.GitHubCommits.AddAsync(new TaskSphere.Domain.Entities.GitHubCommit
-                {
-                    GitHubRepositoryId = repositoryRowId,
-                    CompanyId = installation.CompanyId,
-                    Sha = commit.Sha,
-                    Message = commit.Commit?.Message ?? "",
-                    AuthorName = commit.Commit?.Author?.Name ?? "",
-                    AuthorLogin = commit.Author?.Login,
-                    CommittedAtUtc = commit.Commit?.Author?.Date ?? DateTime.UtcNow,
-                    HtmlUrl = commit.HtmlUrl ?? "",
-                }, cancellationToken);
-
-                inserted++;
-
-                // Saved per commit so the next iteration's GetByShaIncludingDeletedAsync sees
-                // it: the same sha can arrive twice within one run, from two branches.
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await RecordAheadAsync(branch, commitRowId, commit.Sha);
             }
+        }
+
+        async System.Threading.Tasks.Task RecordAheadAsync(string branch, int commitRowId, string sha)
+        {
+            if (!inheritanceEnabled)
+                return;
+
+            // A commit on main is not ahead of main.
+            if (string.Equals(branch, defaultName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (defaultShas.Contains(sha))
+                return;
+
+            var branchRow = await _unitOfWork.GitHubBranches
+                .GetByNameIncludingDeletedAsync(repositoryRowId, branch, cancellationToken);
+
+            if (branchRow is null)
+                return;
+
+            if (await _unitOfWork.GitHubBranchCommits.ExistsForPairAsync(branchRow.Id, commitRowId, cancellationToken))
+                return;
+
+            await _unitOfWork.GitHubBranchCommits.AddAsync(new GitHubBranchCommit
+            {
+                CompanyId = installation.CompanyId,
+                GitHubBranchId = branchRow.Id,
+                GitHubCommitId = commitRowId,
+            }, cancellationToken);
+
+            // On the same per-commit save the commit upsert uses, so a mid-loop failure never
+            // leaves a commit in the mirror with its ahead-ness lost.
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         return (inserted, failures);

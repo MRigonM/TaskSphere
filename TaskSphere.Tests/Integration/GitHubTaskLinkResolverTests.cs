@@ -6,6 +6,7 @@ using TaskSphere.Infrastructure.Repositories;
 using TaskSphere.Infrastructure.Services;
 
 using Company = TaskSphere.Domain.Entities.Company;
+using GitHubBranch = TaskSphere.Domain.Entities.GitHubBranch;
 using GitHubCommit = TaskSphere.Domain.Entities.GitHubCommit;
 using GitHubInstallation = TaskSphere.Domain.Entities.GitHubInstallation;
 using GitHubRepository = TaskSphere.Domain.Entities.GitHubRepository;
@@ -752,5 +753,84 @@ public class GitHubTaskLinkResolverTests : IAsyncLifetime
 
         Assert.Equal(_ts51TaskId, link.TaskId);
         Assert.Equal(pullId, link.GitHubPullRequestId);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACommitAheadOnALinkedBranch_IsInheritedByThatBranchesTask()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+
+        // The branch names TS-42; the commit names nothing at all. Message-only resolution links
+        // the branch and stops, which is the gap this feature closes.
+        var branch = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-42-login", HeadSha = "bbb" };
+        var commit = new GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _apiRepositoryId,
+            Sha = "ahead1",
+            Message = "wire up the login form",
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/ahead1",
+        };
+        db.GitHubBranches.Add(branch);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        db.GitHubBranchCommits.Add(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branch.Id,
+            GitHubCommitId = commit.Id,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+
+        // The branch link AND the inherited commit link, in one run: the branch link is created by
+        // the branch pass of this same run and is still unsaved when inheritance reads it.
+        Assert.Equal(2, result.LinksCreated);
+
+        var inherited = Assert.Single(await db.TaskLinks.Where(l => l.GitHubCommitId != null).ToListAsync());
+        Assert.Equal(_ts42TaskId, inherited.TaskId);
+        Assert.Equal(commit.Id, inherited.GitHubCommitId);
+        Assert.Equal(branch.Id, inherited.ViaGitHubBranchId);
+    }
+
+    [Fact]
+    public async SystemTask.Task InheritedLinks_DoNotInflateKeysSeen()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+
+        var branch = new GitHubBranch { CompanyId = _companyId, GitHubRepositoryId = _apiRepositoryId, Name = "TS-42-login", HeadSha = "bbb" };
+        var commit = new GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _apiRepositoryId,
+            Sha = "ahead1",
+            Message = "wire up the login form",
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/ahead1",
+        };
+        db.GitHubBranches.Add(branch);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        db.GitHubBranchCommits.Add(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branch.Id,
+            GitHubCommitId = commit.Id,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await new GitHubTaskLinkResolver(uow).ResolveAsync(_companyId);
+
+        // One key was read in this run — the branch name. Inheritance reads no text, so counting
+        // it as a key seen would make the sync summary lie about how much GitHub data was scanned.
+        Assert.Equal(1, result.KeysSeen);
     }
 }

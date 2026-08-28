@@ -75,6 +75,11 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
             await LinkAll(text, pull.GitHubRepositoryId, pullRequestId: pull.Id);
         }
 
+        // Fourth pass, and deliberately last: the three text passes must have claimed their
+        // tuples first, so a commit that names the task itself reads as direct rather than
+        // inherited. See InheritFromBranchesAsync.
+        await InheritFromBranchesAsync();
+
         if (created > 0)
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -107,6 +112,63 @@ public class GitHubTaskLinkResolver : IGitHubTaskLinkResolver
                 }, cancellationToken);
 
                 created++;
+            }
+        }
+
+        async Task InheritFromBranchesAsync()
+        {
+            // `existing` is the reason this works in a single run. It was seeded from the
+            // database and has been added to by the branch pass, so it holds both the branch
+            // links that already existed and the ones created moments ago — which are still
+            // unsaved and invisible to a fresh query. Reading the database here instead would
+            // make a newly linked branch inherit nothing until the NEXT sync.
+            //
+            // Materialized before the loop: the loop adds to `existing`, and iterating a
+            // HashSet while adding to it throws.
+            var branchLinks = existing
+                .Where(e => e.GitHubBranchId is not null)
+                .Select(e => (e.TaskId, BranchId: e.GitHubBranchId!.Value))
+                .ToList();
+
+            if (branchLinks.Count == 0)
+                return;
+
+            var branchIds = branchLinks.Select(l => l.BranchId).Distinct().ToList();
+
+            var aheadRows = await _unitOfWork.GitHubBranchCommits
+                .GetByCompany(companyId)
+                .Where(bc => branchIds.Contains(bc.GitHubBranchId))
+                .Select(bc => new { bc.GitHubBranchId, bc.GitHubCommitId })
+                .ToListAsync(cancellationToken);
+
+            var commitsByBranch = aheadRows
+                .GroupBy(r => r.GitHubBranchId)
+                .ToDictionary(g => g.Key, g => g.Select(r => r.GitHubCommitId).ToList());
+
+            foreach (var (taskId, branchId) in branchLinks)
+            {
+                if (!commitsByBranch.TryGetValue(branchId, out var commitIds))
+                    continue;
+
+                foreach (var commitId in commitIds)
+                {
+                    // The SAME tuple shape the commit pass uses — ViaGitHubBranchId is not part
+                    // of it, and must never become part of it. Widening the tuple would let a
+                    // direct link and an inherited one for one commit both look new, and they
+                    // collide on IX_TaskLinks_TaskId_CommitId. Task 7 pins this.
+                    if (!existing.Add((taskId, commitId, null, null)))
+                        continue;
+
+                    await _unitOfWork.TaskLinks.AddAsync(new TaskLink
+                    {
+                        CompanyId = companyId,
+                        TaskId = taskId,
+                        GitHubCommitId = commitId,
+                        ViaGitHubBranchId = branchId,
+                    }, cancellationToken);
+
+                    created++;
+                }
             }
         }
     }

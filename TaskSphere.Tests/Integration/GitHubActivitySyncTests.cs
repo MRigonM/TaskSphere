@@ -1687,4 +1687,41 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var row = Assert.Single(await db.GitHubBranchCommits.Include(bc => bc.Commit).ToListAsync());
         Assert.Equal("ahead1", row.Commit!.Sha);
     }
+
+    [Fact]
+    public async SystemTask.Task AnInheritedLink_SurvivesTheBranchBeingMergedIntoTheDefault()
+    {
+        // The add-only decision, tested rather than assumed. Run 1: TS-42's branch is ahead, so
+        // the commit is inherited. Run 2: the work has merged, main now reaches the commit, and
+        // the set difference for that branch is empty. The link must still be there — losing a
+        // task's commit history the moment the work lands is the outcome add-only exists to avoid.
+        var before = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(("base1", "chore: bump deps", "MRigonM")))
+            .On("sha=TS-42-fix", Commits(
+                ("base1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(before);
+
+        await using (var db = NewContext())
+        {
+            var link = Assert.Single(await db.TaskLinks.Where(l => l.ViaGitHubBranchId != null).ToListAsync());
+            Assert.Equal(_ts42TaskId, link.TaskId);
+        }
+
+        var after = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "ccc"), ("TS-42-fix", "bbb")))
+            .On("sha=main", Commits(
+                ("base1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")))   // merged: main reaches it now
+            .On("sha=TS-42-fix", Commits(
+                ("base1", "chore: bump deps", "MRigonM"),
+                ("ahead1", "wire up the login form", "MRigonM")));
+
+        await Sync(after);
+
+        await using var final = NewContext();
+        Assert.Single(await final.TaskLinks.Where(l => l.ViaGitHubBranchId != null).ToListAsync());
+    }
 }

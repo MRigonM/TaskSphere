@@ -13,6 +13,7 @@ public interface IReadOnlyUnitOfWork
     IProjectRepositoryLinkRepository ProjectRepositoryLinks { get; }
     IGitHubCommitRepository GitHubCommits { get; }
     IGitHubBranchRepository GitHubBranches { get; }
+    IGitHubBranchCommitRepository GitHubBranchCommits { get; }
     IGitHubPullRequestRepository GitHubPullRequests { get; }
     ITaskLinkRepository TaskLinks { get; }
 }

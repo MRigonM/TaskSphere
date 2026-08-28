@@ -326,4 +326,75 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         Assert.Same(uow.GitHubPullRequests, uow.GitHubPullRequests);
         Assert.Same(uow.TaskLinks, uow.TaskLinks);
     }
+
+    private async SystemTask.Task<(int BranchId, int CommitId)> SeedBranchAndCommit(ApplicationDbContext db)
+    {
+        var branch = new TaskSphere.Domain.Entities.GitHubBranch
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _repositoryId,
+            Name = "TS-42-login",
+            HeadSha = "bbb",
+        };
+
+        var commit = new TaskSphere.Domain.Entities.GitHubCommit
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _repositoryId,
+            Sha = "ahead1",
+            Message = "wire up the login form",
+            AuthorName = "Rigon",
+            CommittedAtUtc = DateTime.UtcNow,
+            HtmlUrl = "https://github.com/rigon-org/api/commit/ahead1",
+        };
+
+        db.GitHubBranches.Add(branch);
+        db.GitHubCommits.Add(commit);
+        await db.SaveChangesAsync();
+
+        return (branch.Id, commit.Id);
+    }
+
+    [Fact]
+    public async SystemTask.Task GitHubBranchCommits_ExistsForPair_IsTrueOnlyForTheExactPair()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+        var (branchId, commitId) = await SeedBranchAndCommit(db);
+
+        await uow.GitHubBranchCommits.AddAsync(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branchId,
+            GitHubCommitId = commitId,
+        });
+        await uow.SaveChangesAsync(default);
+
+        Assert.True(await uow.GitHubBranchCommits.ExistsForPairAsync(branchId, commitId));
+
+        // The dangerous direction: a transposed or partially-matching pair must NOT read as
+        // present, or the sync stops writing rows it should write.
+        Assert.False(await uow.GitHubBranchCommits.ExistsForPairAsync(commitId, branchId));
+        Assert.False(await uow.GitHubBranchCommits.ExistsForPairAsync(branchId, commitId + 1));
+        Assert.False(await uow.GitHubBranchCommits.ExistsForPairAsync(branchId + 1, commitId));
+    }
+
+    [Fact]
+    public async SystemTask.Task GitHubBranchCommits_GetByCompany_ExcludesOtherCompanies()
+    {
+        await using var db = NewContext();
+        var uow = new UnitOfWork(db);
+        var (branchId, commitId) = await SeedBranchAndCommit(db);
+
+        await uow.GitHubBranchCommits.AddAsync(new TaskSphere.Domain.Entities.GitHubBranchCommit
+        {
+            CompanyId = _companyId,
+            GitHubBranchId = branchId,
+            GitHubCommitId = commitId,
+        });
+        await uow.SaveChangesAsync(default);
+
+        Assert.Single(await uow.GitHubBranchCommits.GetByCompany(_companyId).ToListAsync());
+        Assert.Empty(await uow.GitHubBranchCommits.GetByCompany(_otherCompanyId).ToListAsync());
+    }
 }

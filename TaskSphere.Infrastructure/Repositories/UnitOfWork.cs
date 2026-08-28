@@ -52,6 +52,10 @@ public class UnitOfWork : IUnitOfWork
     public IGitHubBranchRepository GitHubBranches =>
         _gitHubBranches ??= new GitHubBranchRepository(_context);
 
+    private IGitHubBranchCommitRepository? _gitHubBranchCommits;
+    public IGitHubBranchCommitRepository GitHubBranchCommits =>
+        _gitHubBranchCommits ??= new GitHubBranchCommitRepository(_context);
+
     private IGitHubPullRequestRepository? _gitHubPullRequests;
     public IGitHubPullRequestRepository GitHubPullRequests =>
         _gitHubPullRequests ??= new GitHubPullRequestRepository(_context);

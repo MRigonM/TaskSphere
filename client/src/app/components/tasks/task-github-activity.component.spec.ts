@@ -18,6 +18,7 @@ const full: TaskGitHubActivityDto = {
       committedAtUtc: '2026-08-11T10:00:00Z',
       htmlUrl: 'https://github.com/rigon-org/api/commit/1234567',
       repositoryFullName: 'rigon-org/api',
+      viaBranchName: null,
     },
   ],
   branches: [
@@ -683,5 +684,27 @@ describe('TaskGitHubActivityComponent', () => {
     fixture.detectChanges();
 
     expect(moved).toBe(0);
+  });
+
+  it('marks an inherited commit with the branch that conferred it, and leaves a direct one bare', async () => {
+    // Two commits, so the assertion can prove the marker landed on the RIGHT one. With a single
+    // fixture commit, "the text appears somewhere" is true of a marker rendered on every row.
+    const activity = {
+      commits: [
+        { sha: 'direct1', shortSha: 'direct1', message: 'TS-42 add the form', authorName: 'Rigon', authorLogin: 'MRigonM', committedAtUtc: '2026-08-27T10:00:00Z', htmlUrl: 'https://example.invalid/1', repositoryFullName: 'rigon-org/api', viaBranchName: null },
+        { sha: 'ahead1', shortSha: 'ahead1', message: 'wire up the login form', authorName: 'Rigon', authorLogin: 'MRigonM', committedAtUtc: '2026-08-27T11:00:00Z', htmlUrl: 'https://example.invalid/2', repositoryFullName: 'rigon-org/api', viaBranchName: 'TS-42-login' },
+      ],
+      branches: [],
+      pullRequests: [],
+      lastSyncedAtUtc: null,
+    };
+
+    const { fixture } = await setup({ payload: activity as TaskGitHubActivityDto });
+
+    // `host()` exists because `nativeElement` is `any` and a generic querySelector on it is TS2347.
+    const rows = host(fixture).querySelectorAll('section li');
+
+    expect(rows[0].querySelector('[data-via-branch]')).toBeNull();
+    expect(rows[1].querySelector('[data-via-branch]')?.textContent?.trim()).toBe('via TS-42-login');
   });
 });

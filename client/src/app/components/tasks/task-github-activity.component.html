@@ -115,6 +115,11 @@
           >{{ commit.shortSha }}</a>
           <span>{{ subject(commit.message) }}</span>
           <span class="text-xs text-slate-500">{{ commit.authorLogin ?? commit.authorName }}</span>
+          <span
+            *ngIf="commit.viaBranchName"
+            data-via-branch
+            class="text-xs text-slate-500"
+          >via <span class="font-mono">{{ commit.viaBranchName }}</span></span>
         </li>
       </ul>
     </section>

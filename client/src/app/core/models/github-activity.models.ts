@@ -15,6 +15,11 @@ export interface TaskCommitDto {
   committedAtUtc: string;
   htmlUrl: string;
   repositoryFullName: string;
+  /**
+   * Null when the commit's own message named the task. Set to the branch that conferred it
+   * when the link was inherited — the commit never mentions the task at all.
+   */
+  viaBranchName: string | null;
 }
 
 /**

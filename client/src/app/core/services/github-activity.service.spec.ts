@@ -18,6 +18,7 @@ const activity: TaskGitHubActivityDto = {
       committedAtUtc: '2026-08-11T10:00:00Z',
       htmlUrl: 'https://github.com/rigon-org/api/commit/1234567',
       repositoryFullName: 'rigon-org/api',
+      viaBranchName: null,
     },
   ],
   branches: [],

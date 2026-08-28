@@ -329,6 +329,19 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
     private async SystemTask.Task<(int BranchId, int CommitId)> SeedBranchAndCommit(ApplicationDbContext db)
     {
+        // A decoy so the branch and commit id spaces diverge. On a freshly migrated database
+        // every table starts its identity at the same value, so without this the "real" branch
+        // and commit both get id 1 — and a transposed pair is indistinguishable from the right
+        // one, which is precisely what the assertions below exist to catch. Do not delete this.
+        db.GitHubBranches.Add(new TaskSphere.Domain.Entities.GitHubBranch
+        {
+            CompanyId = _companyId,
+            GitHubRepositoryId = _repositoryId,
+            Name = "decoy-not-under-test",
+            HeadSha = "decoy",
+        });
+        await db.SaveChangesAsync();
+
         var branch = new TaskSphere.Domain.Entities.GitHubBranch
         {
             CompanyId = _companyId,

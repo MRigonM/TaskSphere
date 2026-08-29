@@ -80,11 +80,16 @@ public class TaskActivityRefreshModelTests : IAsyncLifetime
     [Fact]
     public void TheRepositoryUpsert_LeavesTheCommitsStampAlone()
     {
-        var source = File.ReadAllText(
-            "../../../../TaskSphere.Infrastructure/Services/GitHubRepositorySyncService.cs");
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..",
+            "TaskSphere.Infrastructure", "Services", "GitHubRepositorySyncService.cs");
+
+        var source = File.ReadAllText(Path.GetFullPath(path));
 
         // The upsert refreshes GitHub's own fields. Overwriting TaskSphere's cooldown stamps there
         // would reset every cooldown on every repository sync.
+        Assert.Contains("existing.IsPrivate", source);
         Assert.DoesNotContain("existing.CommitsRefreshedAtUtc", source);
     }
 }

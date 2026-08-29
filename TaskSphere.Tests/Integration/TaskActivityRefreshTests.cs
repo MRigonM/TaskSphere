@@ -54,15 +54,21 @@ public class TaskActivityRefreshTests : IAsyncLifetime
     {
         public List<string> Calls { get; } = new();
         public bool Fail { get; set; }
+        public bool FailCommitsOnly { get; set; }
+        public bool FailPullsOnly { get; set; }
 
         public SystemTask.Task<Result<GitHubResponse>> GetAsync(
             long installationId, string url, CancellationToken cancellationToken = default)
         {
             Calls.Add(url);
 
-            if (Fail)
+            if (Fail ||
+                (FailCommitsOnly && url.Contains("/commits")) ||
+                (FailPullsOnly && url.Contains("/pulls")))
+            {
                 return SystemTask.Task.FromResult(
                     Result<GitHubResponse>.Failure(new Error("GitHub.Failed", "GitHub returned 500.")));
+            }
 
             if (url.Contains("/branches"))
             {
@@ -639,5 +645,47 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         // silently extends its own cooldown and pull requests go stale for as long as anyone
         // keeps opening tasks.
         Assert.Equal(untouched, after.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task APartialCommitsPass_LeavesTheCommitStampNull_ButStillStampsPulls()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailCommitsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        // Pull requests are the pass that succeeded, so the run still counts as refreshed.
+        Assert.True(result.Value!.Refreshed);
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        // Branches came back, but the commits listing failed — a partial pass must not buy five
+        // minutes of silence for the branches that did not come back.
+        Assert.Null(repository.CommitsRefreshedAtUtc);
+        Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailedPullRequestsPass_LeavesThePullStampNull_ButStillStampsCommits()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailPullsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        // Commits are the pass that succeeded, so the run still counts as refreshed.
+        Assert.True(result.Value!.Refreshed);
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        Assert.NotNull(repository.CommitsRefreshedAtUtc);
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
     }
 }

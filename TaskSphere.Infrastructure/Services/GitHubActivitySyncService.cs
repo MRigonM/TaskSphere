@@ -83,38 +83,64 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
         foreach (var repository in repositories)
         {
-            var branchResult = await _branches.RefreshAsync(installation, repository.Id, repository.FullName, cancellationToken);
-
-            if (!branchResult.IsSuccess)
+            try
             {
-                failures.Add(new SyncFailureDto(repository.FullName, branchResult.Errors[0].Description));
-                continue;
+                var branchResult = await _branches.RefreshAsync(installation, repository.Id, repository.FullName, cancellationToken);
+
+                if (!branchResult.IsSuccess)
+                {
+                    failures.Add(new SyncFailureDto(repository.FullName, branchResult.Errors[0].Description));
+                    continue;
+                }
+
+                branchCount += branchResult.Value!.Count;
+
+                // A branch that fails is one line in the summary, not the end of the repository:
+                // the commits pass reports per branch, so the other branches' commits are still
+                // counted and the repository still counts as synced.
+                var (inserted, commitFailures) = await _commits.RefreshAsync(
+                    installation, repository.Id, repository.FullName, branchResult.Value!,
+                    repository.DefaultBranch, since, cancellationToken);
+
+                failures.AddRange(commitFailures);
+                commitCount += inserted;
+
+                // Same guard as the task-triggered refresh: a stamp means "this pass genuinely
+                // succeeded", so a per-branch commit failure withholds it even though the
+                // repository still counts as synced overall.
+                if (commitFailures.Count == 0)
+                    repository.CommitsRefreshedAtUtc = DateTime.UtcNow;
+
+                // One listing per repository, so this failure is repository-scoped and carries no
+                // branch. It still does not un-sync the repository: its branches and the commits
+                // that did come back are already recorded.
+                var pullResult = await _pullRequests.RefreshAsync(
+                    installation, repository.Id, repository.FullName, since, cancellationToken);
+
+                if (!pullResult.IsSuccess)
+                {
+                    failures.Add(new SyncFailureDto(repository.FullName, pullResult.Errors[0].Description));
+                }
+                else
+                {
+                    pullCount += pullResult.Value;
+                    repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
+                }
+
+                await _unitOfWork.GitHubRepositories.Update(repository, cancellationToken);
+
+                synced++;
             }
-
-            branchCount += branchResult.Value!.Count;
-
-            // A branch that fails is one line in the summary, not the end of the repository:
-            // the commits pass reports per branch, so the other branches' commits are still
-            // counted and the repository still counts as synced.
-            var (inserted, commitFailures) = await _commits.RefreshAsync(
-                installation, repository.Id, repository.FullName, branchResult.Value!,
-                repository.DefaultBranch, since, cancellationToken);
-
-            failures.AddRange(commitFailures);
-            commitCount += inserted;
-
-            // One listing per repository, so this failure is repository-scoped and carries no
-            // branch. It still does not un-sync the repository: its branches and the commits
-            // that did come back are already recorded.
-            var pullResult = await _pullRequests.RefreshAsync(
-                installation, repository.Id, repository.FullName, since, cancellationToken);
-
-            if (!pullResult.IsSuccess)
-                failures.Add(new SyncFailureDto(repository.FullName, pullResult.Errors[0].Description));
-            else
-                pullCount += pullResult.Value;
-
-            synced++;
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // GitHubCommitMirror does check-then-insert with a save per commit against a
+                // unique unfiltered index on (GitHubRepositoryId, Sha); two concurrent passes
+                // over the same repository (this sync racing a member's task-triggered refresh)
+                // can collide here. Without this, one repository's collision would throw a
+                // DbUpdateException that aborts every remaining repository and skips the sync
+                // stamp — the same race the task and project refresh paths already survive.
+                _unitOfWork.DiscardPendingChanges();
+            }
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

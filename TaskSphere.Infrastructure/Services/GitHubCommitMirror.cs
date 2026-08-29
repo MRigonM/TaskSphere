@@ -81,7 +81,9 @@ public class GitHubCommitMirror
             var sinceParameter = since.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
             // Escaped: branch names contain slashes, and an unescaped one changes the path
-            // rather than the query.
+            // rather than the query. "/commits?sha=" must stay one contiguous literal —
+            // GitHubActivitySyncTests.TheCommitsPass_LivesInTheMirror_NotInTheSyncService matches
+            // on that exact text to prove the commits pass lives only here.
             var url = $"https://api.github.com/repos/{fullName}/commits?sha={Uri.EscapeDataString(branch)}" +
                       $"&since={sinceParameter}" +
                       "&per_page=100";

@@ -65,7 +65,8 @@ export interface SyncFailureDto {
 
 /**
  * Returned by the task-scoped, member-reachable refresh. `lastSyncedAtUtc` mirrors the same
- * field on `TaskGitHubActivityDto` so the panel can show it without a second read.
+ * field on `TaskGitHubActivityDto`, but the panel does not read it from here — it always
+ * follows the refresh with a read of its own, so this value is currently unused on the client.
  */
 export interface TaskActivityRefreshDto {
   refreshed: boolean;

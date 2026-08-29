@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskSphere.Application.Interfaces;
@@ -16,15 +17,18 @@ public class TasksController : ApiBaseController
     private readonly ITaskService _taskService;
     private readonly IGitHubTaskActivityService _gitHubActivityService;
     private readonly IGitHubBranchService _gitHubBranchService;
+    private readonly ITaskActivityRefreshService _taskActivityRefresh;
 
     public TasksController(
         ITaskService taskService,
         IGitHubTaskActivityService gitHubActivityService,
-        IGitHubBranchService gitHubBranchService)
+        IGitHubBranchService gitHubBranchService,
+        ITaskActivityRefreshService taskActivityRefresh)
     {
         _taskService = taskService;
         _gitHubActivityService = gitHubActivityService;
         _gitHubBranchService = gitHubBranchService;
+        _taskActivityRefresh = taskActivityRefresh;
     }
 
     [HttpGet("{taskId:int}")]
@@ -97,6 +101,21 @@ public class TasksController : ApiBaseController
     public async Task<IActionResult> CreateGitHubBranch(int taskId, [FromBody] CreateBranchDto dto, CancellationToken ct)
     {
         var result = await _gitHubBranchService.CreateForTaskAsync(CompanyId, UserId, IsCompanyAdmin, taskId, dto, ct);
+        return FromResult(result);
+    }
+
+    /// <summary>
+    /// Refreshes the branches, commits and pull requests of this task's project's repositories,
+    /// then applies any merge → Done transitions. Fired by opening the Activity tab, so it is
+    /// reachable by members: task access is what authorizes it, checked in the service. Not
+    /// audited — see TaskActivityRefreshEndpointTests.
+    /// </summary>
+    [HttpPost("{taskId:int}/github-refresh")]
+    public async Task<IActionResult> RefreshGitHubActivity(int taskId, CancellationToken ct)
+    {
+        var result = await _taskActivityRefresh.RefreshAsync(
+            CompanyId, taskId, UserId, IsCompanyAdmin, User.FindFirst(ClaimTypes.Name)?.Value, ct);
+
         return FromResult(result);
     }
 

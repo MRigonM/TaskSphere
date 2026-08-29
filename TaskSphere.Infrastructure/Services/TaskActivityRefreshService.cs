@@ -120,17 +120,18 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
         {
             try
             {
-                // Branches first and unconditionally: the commits pass consumes the list it
-                // returns, and RecordAheadAsync looks up branch rows that must already exist.
+                // Branches first when they run at all: the commits pass consumes the list they
+                // return, and RecordAheadAsync looks up branch rows that must already exist. But
+                // a branch failure does not stop pull-request processing: the transition's input
+                // (merged PRs) must flow even if the Activity tab (branches) is temporarily
+                // unavailable. Branches exist to show work history; pull requests drive task
+                // completion. (Same rationale as ProjectActivityRefreshService's ordering.)
                 var branchResult = await _branches.RefreshAsync(
                     installation, w.Repository.Id, w.Repository.FullName, cancellationToken);
 
-                if (!branchResult.IsSuccess)
-                    continue;
-
                 var didSomething = false;
 
-                if (w.RefreshCommits)
+                if (branchResult.IsSuccess && w.RefreshCommits)
                 {
                     var (_, commitFailures) = await _commits.RefreshAsync(
                         installation, w.Repository.Id, w.Repository.FullName, branchResult.Value!,
@@ -198,6 +199,11 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
     /// just-refreshed repository vouch for a stale one beside it. Null when any repository has
     /// never been refreshed at all — "unknown", not "old".
     ///
+    /// The same rule applies one level down, within a single repository: a repository's own
+    /// stamp is the OLDER of its two passes (via <see cref="Older"/>), not the newer one — a
+    /// repository whose pull-request pass failed must not have its just-refreshed commits stamp
+    /// vouch for a pull-request list that was never fetched.
+    ///
     /// Shared with GitHubTaskActivityService.GetForTaskAsync, which computes the read side's
     /// "Last synced" label from the same rule over the same repository stamp columns — the two
     /// must never disagree.
@@ -205,12 +211,13 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
     internal static DateTime? LastStamp(List<GitHubRepository> repositories)
     {
         var stamps = repositories
-            .Select(r => Newer(r.CommitsRefreshedAtUtc, r.PullRequestsRefreshedAtUtc))
+            .Select(r => Older(r.CommitsRefreshedAtUtc, r.PullRequestsRefreshedAtUtc))
             .ToList();
 
         return stamps.Count == 0 || stamps.Any(s => s is null) ? null : stamps.Min();
     }
 
-    private static DateTime? Newer(DateTime? a, DateTime? b) =>
-        a is null ? b : b is null ? a : (a > b ? a : b);
+    /// <summary>Null if either input is null — "unknown", not "old" — otherwise the earlier one.</summary>
+    private static DateTime? Older(DateTime? a, DateTime? b) =>
+        a is null || b is null ? null : (a < b ? a : b);
 }

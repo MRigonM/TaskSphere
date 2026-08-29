@@ -56,6 +56,14 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         public bool Fail { get; set; }
         public bool FailCommitsOnly { get; set; }
         public bool FailPullsOnly { get; set; }
+        public bool FailBranchesOnly { get; set; }
+
+        /// <summary>
+        /// Every other fixture's branch listing omits "main" — the repository's own
+        /// DefaultBranch — so inheritance is disabled everywhere except here. Opt in for a test
+        /// that needs the refresh path's argument shape exercised with a real default branch.
+        /// </summary>
+        public bool IncludeDefaultBranch { get; set; }
 
         public SystemTask.Task<Result<GitHubResponse>> GetAsync(
             long installationId, string url, CancellationToken cancellationToken = default)
@@ -64,7 +72,8 @@ public class TaskActivityRefreshTests : IAsyncLifetime
 
             if (Fail ||
                 (FailCommitsOnly && url.Contains("/commits")) ||
-                (FailPullsOnly && url.Contains("/pulls")))
+                (FailPullsOnly && url.Contains("/pulls")) ||
+                (FailBranchesOnly && url.Contains("/branches")))
             {
                 return SystemTask.Task.FromResult(
                     Result<GitHubResponse>.Failure(new Error("GitHub.Failed", "GitHub returned 500.")));
@@ -72,14 +81,15 @@ public class TaskActivityRefreshTests : IAsyncLifetime
 
             if (url.Contains("/branches"))
             {
-                var branchBody = JsonSerializer.Serialize(new[]
+                var branches = new List<object>
                 {
-                    new
-                    {
-                        name = "TS-42/add-the-panel",
-                        commit = new { sha = "abc123def456" },
-                    },
-                });
+                    new { name = "TS-42/add-the-panel", commit = new { sha = "abc123def456" } },
+                };
+
+                if (IncludeDefaultBranch)
+                    branches.Add(new { name = "main", commit = new { sha = "main000fed" } });
+
+                var branchBody = JsonSerializer.Serialize(branches);
 
                 return SystemTask.Task.FromResult(
                     Result<GitHubResponse>.Success(new GitHubResponse(branchBody, null)));
@@ -749,6 +759,82 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Value!.TasksTransitioned);
         Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task ABranchListingFailure_StillRunsThePullRequestPass()
+    {
+        // The sibling ProjectActivityRefreshService deliberately does not let a branch failure
+        // stop pull-request processing: the transition's input (merged PRs) must flow even if
+        // the Activity tab (branches) is temporarily unavailable. Branches exist to show work
+        // history; pull requests drive task completion.
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailBranchesOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        // Pull requests are the pass that succeeded, so the run still counts as refreshed.
+        Assert.True(result.Value!.Refreshed);
+
+        Assert.Contains(api.Calls, c => c.Contains("/pulls"));
+        // The commits pass consumes the branch list, so it cannot have run when branches failed.
+        Assert.DoesNotContain(api.Calls, c => c.Contains("/commits?sha="));
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        Assert.Null(repository.CommitsRefreshedAtUtc);
+        Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task LastStamp_IsTheOlderOfARepositorysTwoPasses_NotTheNewer()
+    {
+        // A repository whose pull-request pass failed keeps its old (null) pull stamp while its
+        // commits stamp moves. Taking the newer of the two — Max() — would print "just synced"
+        // over a pull-request list that was never fetched. Every other fixture in this file seeds
+        // both stamps to the same instant, which is why nothing else here would catch a reversion
+        // to Max().
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailPullsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+
+        // The commits pass ran and stamped just now; the pull pass never ran and left its stamp
+        // null. LastStamp must report null (unknown), not the fresh commits time.
+        Assert.NotNull(repository.CommitsRefreshedAtUtc);
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
+        Assert.Null(result.Value!.LastSyncedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task ARefreshWithADefaultBranchListing_PassesTheSameShapeTheSyncPathDoes()
+    {
+        // Every other test in this file has DefaultBranch ("main") absent from the /branches
+        // response, so inheritance is disabled throughout and the argument shape this path hands
+        // to GitHubCommitMirror is never exercised with a real default branch. This one includes
+        // "main" so that path is pinned too.
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { IncludeDefaultBranch = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Refreshed);
+
+        // Both branches were listed for commits — proof the default branch travelled through in
+        // the branch list, the same shape GitHubActivitySyncService hands the mirror.
+        Assert.Contains(api.Calls, c => c.Contains("/commits?sha=main"));
+        Assert.Contains(api.Calls, c => c.Contains("/commits?sha=TS-42%2Fadd-the-panel"));
     }
 
     [Fact]

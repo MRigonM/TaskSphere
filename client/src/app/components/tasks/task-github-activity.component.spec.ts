@@ -60,8 +60,13 @@ function host(fixture: { nativeElement: HTMLElement }): HTMLElement {
   return fixture.nativeElement;
 }
 
-/** Mounts and renders once, leaving the first read in flight for the caller to answer. */
-function mount(options: { role?: string } = {}) {
+/**
+ * Mounts and renders once, leaving the first read in flight for the caller to answer.
+ * Defaults `active` to true — the Activity tab is the one showing — since most tests in this
+ * file exercise the read/render/sync behaviour, not the mount-vs-activate trigger split (that
+ * split has its own tests below).
+ */
+function mount(options: { role?: string; active?: boolean } = {}) {
   localStorage.setItem(
     'tasksphere_auth',
     JSON.stringify({
@@ -81,10 +86,11 @@ function mount(options: { role?: string } = {}) {
   const http = TestBed.inject(HttpTestingController);
   const fixture = TestBed.createComponent(TaskGitHubActivityComponent);
   fixture.componentRef.setInput('taskId', 42);
+  fixture.componentRef.setInput('active', options.active ?? true);
   fixture.detectChanges();
 
-  // Every open now refreshes before it reads. Tests that only care about the read flush this
-  // with a no-op result and move on to the request they actually asserted on.
+  // Every open on the Activity tab now refreshes before it reads. Tests that only care about
+  // the read flush this with a no-op result and move on to the request they actually asserted on.
   flushRefresh(http, 42);
 
   return { fixture, http, req: http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`) };
@@ -770,10 +776,11 @@ describe('TaskGitHubActivityComponent', () => {
     expect(rows[1].querySelector('[data-via-branch]')?.textContent?.trim()).toBe('via TS-42-login');
   });
 
-  it('refreshes before reading, so the panel shows what GitHub has now', () => {
+  it('refreshes before reading, so the panel shows what GitHub has now — once the Activity tab is the one showing', () => {
     const { component, http } = createComponent();
 
     component.taskId = 42;
+    component.active = true;
     component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
 
     const refresh = http.expectOne(`${environment.apiUrl}Tasks/42/github-refresh`);
@@ -789,6 +796,7 @@ describe('TaskGitHubActivityComponent', () => {
     const { component, http } = createComponent();
 
     component.taskId = 42;
+    component.active = true;
     component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
 
     http
@@ -806,6 +814,7 @@ describe('TaskGitHubActivityComponent', () => {
     component.tasksMoved.subscribe(moved);
 
     component.taskId = 42;
+    component.active = true;
     component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
 
     http
@@ -817,5 +826,64 @@ describe('TaskGitHubActivityComponent', () => {
     expect(moved).toHaveBeenCalled();
 
     http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+  });
+
+  it('reads but does not refresh when it mounts off the Activity tab', () => {
+    // The count badge on the tab strip needs only a read — a local database query. Refreshing
+    // on every task-modal open, whether or not anyone visits Activity, is the whole defect this
+    // trigger split exists to fix.
+    const { component, http } = createComponent();
+
+    component.taskId = 42;
+    component.active = false;
+    component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
+
+    http.expectNone(`${environment.apiUrl}Tasks/42/github-refresh`);
+
+    const read = http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`);
+    read.flush(full);
+
+    expect(component.count()).toBe(4);
+  });
+
+  it('refreshes once the Activity tab becomes the one showing, not merely on mount', () => {
+    const { component, http } = createComponent();
+
+    component.taskId = 42;
+    component.active = false;
+    component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+
+    component.active = true;
+    component.ngOnChanges({ active: { currentValue: true, previousValue: false, firstChange: false, isFirstChange: () => false } });
+
+    const refresh = http.expectOne(`${environment.apiUrl}Tasks/42/github-refresh`);
+    refresh.flush({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0, lastSyncedAtUtc: null });
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+  });
+
+  it('does not refresh again merely from leaving and returning to the tab', () => {
+    // The server-side cooldown absorbs repeat refreshes, but the client should not even fire
+    // one per click — refreshing once per mounted task is enough.
+    const { component, http } = createComponent();
+
+    component.taskId = 42;
+    component.active = true;
+    component.ngOnChanges({ taskId: { currentValue: 42, previousValue: undefined, firstChange: true, isFirstChange: () => true } });
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-refresh`).flush({
+      refreshed: true,
+      repositoriesRefreshed: 1,
+      tasksTransitioned: 0,
+      lastSyncedAtUtc: null,
+    });
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(empty);
+
+    component.active = false;
+    component.ngOnChanges({ active: { currentValue: false, previousValue: true, firstChange: false, isFirstChange: () => false } });
+
+    component.active = true;
+    component.ngOnChanges({ active: { currentValue: true, previousValue: false, firstChange: false, isFirstChange: () => false } });
+
+    // verify() in afterEach fails if a second refresh went out.
   });
 });

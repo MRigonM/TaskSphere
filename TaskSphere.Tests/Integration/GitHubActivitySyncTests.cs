@@ -1205,11 +1205,16 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // Repositories are processed in full-name order, so "rigon-org/api" throws first and
-        // "rigon-org/web" is the one that proves the run kept going.
+        // Repositories are processed in full-name order, so "rigon-org/api" is stamped FIRST and
+        // "rigon-org/web" throws SECOND. This ordering is deliberate: DiscardPendingChanges()
+        // detaches every Added/Modified/Deleted entry tracked by the context, not just the
+        // failing repository's, so it only proves anything when an earlier repository's stamps
+        // are still pending at the moment a later one throws. Making the FIRST repository the
+        // one that throws (as an earlier version of this test did) leaves nothing pending at
+        // discard time and cannot catch the hole this test exists for.
         var api = new FakeApiClient()
-            .ThrowOn("/repos/rigon-org/api/branches")
-            .On("/repos/rigon-org/web/branches", Branches(("main", "aaa")));
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa")))
+            .ThrowOn("/repos/rigon-org/web/branches");
 
         var result = await Sync(api);
 
@@ -1217,13 +1222,18 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         Assert.Equal(1, result.Value!.RepositoriesSynced);
         // Not reported as a failure — failure-reporting for this collision is deferred to its own
         // slice; this fix is scoped to the loop surviving it.
-        Assert.DoesNotContain(result.Value.Failures, f => f.RepositoryFullName == "rigon-org/api");
+        Assert.DoesNotContain(result.Value.Failures, f => f.RepositoryFullName == "rigon-org/web");
 
         await using var db2 = NewContext();
         Assert.NotNull((await db2.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
 
-        var web = await db2.GitHubRepositories.SingleAsync(r => r.Id == _webRepositoryId);
-        Assert.NotNull(web.CommitsRefreshedAtUtc);
+        // The repository processed BEFORE the one that threw. Its stamps must have been saved
+        // durably before the throwing repository's discard could reach them — otherwise a
+        // collision on one repository silently erases every earlier repository's freshness
+        // stamps in the same run, even though their commits and branches are already persisted.
+        var apiRepo = await db2.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+        Assert.NotNull(apiRepo.CommitsRefreshedAtUtc);
+        Assert.NotNull(apiRepo.PullRequestsRefreshedAtUtc);
     }
 
     [Fact]

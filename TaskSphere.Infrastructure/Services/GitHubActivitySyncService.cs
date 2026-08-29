@@ -129,6 +129,13 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
 
                 await _unitOfWork.GitHubRepositories.Update(repository, cancellationToken);
 
+                // Per repository, so a later repository's collision cannot discard this one's
+                // stamps: DiscardPendingChanges() below detaches every Added/Modified/Deleted
+                // entry, not just the failing repository's, and the mirrors already save their
+                // own rows as they go — only these stamp assignments were still pending. Same
+                // reasoning as TaskActivityRefreshService's per-repository save.
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
                 synced++;
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
@@ -143,8 +150,9 @@ public class GitHubActivitySyncService : IGitHubActivitySyncService
             }
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
+        // No longer needed here: every repository's stamps are now saved per-repository, inside
+        // the loop, immediately after they're assigned (see the comment above). Nothing else is
+        // added to the context between the loop and here.
         var resolution = await _resolver.ResolveAsync(companyId, cancellationToken);
 
         // After the pull-request upsert, so State is current. Independent of the resolver: the

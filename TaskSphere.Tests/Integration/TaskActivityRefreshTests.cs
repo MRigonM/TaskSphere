@@ -515,4 +515,66 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         Assert.False(result.Value!.Refreshed);
         Assert.Empty(api.Calls);
     }
+
+    [Fact]
+    public async SystemTask.Task ARepositoryInsideBothCooldowns_IsNotCalledAtAll()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddSeconds(-5);
+        repository.CommitsRefreshedAtUtc = DateTime.UtcNow.AddSeconds(-5);
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Refreshed);
+        Assert.Empty(api.Calls);
+    }
+
+    [Fact]
+    public async SystemTask.Task CommitsDue_ButPullsNot_CallsBranchesAndCommits_NotPulls()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddSeconds(-5);   // inside 60s
+        repository.CommitsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-10);       // outside 5min
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
+
+        // Branches are fetched because the commits pass consumes the branch list, not because
+        // pull requests are due.
+        Assert.Contains(api.Calls, c => c.Contains("/branches"));
+        Assert.Contains(api.Calls, c => c.Contains("/commits?sha="));
+        Assert.DoesNotContain(api.Calls, c => c.Contains("/pulls"));
+    }
+
+    [Fact]
+    public async SystemTask.Task PullsDue_ButCommitsNot_SkipsTheCommitListings()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-2);   // outside 60s
+        repository.CommitsRefreshedAtUtc = DateTime.UtcNow.AddSeconds(-30);       // inside 5min
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
+
+        Assert.Contains(api.Calls, c => c.Contains("/pulls"));
+        Assert.DoesNotContain(api.Calls, c => c.Contains("/commits?sha="));
+    }
 }

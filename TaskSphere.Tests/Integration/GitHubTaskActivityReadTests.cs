@@ -321,7 +321,7 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
         // LastSyncedAtUtc now comes from the repositories' own stamps, not the installation
         // column, so a soft-deleted installation no longer blanks it — the repository's stamps
         // are untouched by that deletion.
-        Assert.NotNull(result.Value!.LastSyncedAtUtc);
+        Assert.Equal(new DateTime(2026, 8, 13, 9, 0, 0), result.Value!.LastSyncedAtUtc);
     }
 
     [Fact]

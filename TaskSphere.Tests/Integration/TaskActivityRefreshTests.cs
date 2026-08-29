@@ -700,19 +700,39 @@ public class TaskActivityRefreshTests : IAsyncLifetime
     public async SystemTask.Task NothingRefreshed_DoesNotRunTheResolver()
     {
         await using var seed = NewContext();
+
+        // Stale, so work.Count > 0 and execution reaches the branch/commit/pull loop rather than
+        // the Task-5 early return for a cooldown hit — this test must exercise the refreshed > 0
+        // guard itself, not a different code path that happens to leave TaskLinks untouched too.
         var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
-        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
-        repository.CommitsRefreshedAtUtc = DateTime.UtcNow;
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-10);
+        repository.CommitsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-10);
+        await seed.SaveChangesAsync();
+
+        // A branch the resolver WOULD link to _ts42TaskId if it ran. Without a resolvable row,
+        // "no new TaskLinks" would hold whether or not the guard exists, and the assertion below
+        // would prove nothing.
+        seed.GitHubBranches.Add(new GitHubBranch
+        {
+            GitHubRepositoryId = _apiRepositoryId,
+            CompanyId = _companyId,
+            Name = "TS-42/seeded",
+            HeadSha = "seeded1234567",
+        });
         await seed.SaveChangesAsync();
 
         await using var db = NewContext();
         var linksBefore = await db.TaskLinks.CountAsync();
-        var service = NewService(db, new FakeGitHubApiClient());
+
+        // Every call fails, so the branch listing for the one due repository fails and refreshed
+        // stays 0 — nothing refreshed, by the real path, not a shortcut.
+        var service = NewService(db, new FakeGitHubApiClient { Fail = true });
 
         await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
 
         // The resolver reads every commit, branch and pull request in the company. A cooldown hit
-        // must stay free.
+        // must stay free — and the seeded branch above proves it: if the resolver ran, this count
+        // would grow by exactly one.
         Assert.Equal(linksBefore, await db.TaskLinks.CountAsync());
     }
 

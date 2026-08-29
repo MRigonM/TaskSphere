@@ -175,13 +175,42 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
             }
         }
 
-        // Task 6 adds the resolver and merge-transition tail.
+        // Skipped entirely when nothing was refreshed: the resolver reads every commit, branch and
+        // pull request in the company, and a cooldown hit must stay free.
+        if (refreshed > 0)
+            await _resolver.ResolveAsync(companyId, cancellationToken);
+
+        // Scoped to this task's repositories, not company-wide: opening one task must not transition
+        // tasks on unrelated projects.
+        var transitions = await _mergeTransitions.ApplyAsync(
+            companyId, actorUsername, linkedRepositoryIds, cancellationToken);
+
         return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(
             Refreshed: refreshed > 0,
             RepositoriesRefreshed: refreshed,
-            TasksTransitioned: 0,
+            TasksTransitioned: transitions.Value?.Transitioned ?? 0,
             LastSyncedAtUtc: LastStamp(repositories)));
     }
 
-    private static DateTime? LastStamp(List<GitHubRepository> r) => null;
+    /// <summary>
+    /// The OLDEST of the per-repository stamps, deliberately: the panel may only claim freshness
+    /// as of the least recently refreshed repository it is showing. Max() would let one
+    /// just-refreshed repository vouch for a stale one beside it. Null when any repository has
+    /// never been refreshed at all — "unknown", not "old".
+    ///
+    /// Shared with GitHubTaskActivityService.GetForTaskAsync, which computes the read side's
+    /// "Last synced" label from the same rule over the same repository stamp columns — the two
+    /// must never disagree.
+    /// </summary>
+    internal static DateTime? LastStamp(List<GitHubRepository> repositories)
+    {
+        var stamps = repositories
+            .Select(r => Newer(r.CommitsRefreshedAtUtc, r.PullRequestsRefreshedAtUtc))
+            .ToList();
+
+        return stamps.Count == 0 || stamps.Any(s => s is null) ? null : stamps.Min();
+    }
+
+    private static DateTime? Newer(DateTime? a, DateTime? b) =>
+        a is null ? b : b is null ? a : (a > b ? a : b);
 }

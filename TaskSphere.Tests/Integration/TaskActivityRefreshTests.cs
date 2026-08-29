@@ -461,6 +461,13 @@ public class TaskActivityRefreshTests : IAsyncLifetime
 
     public SystemTask.Task DisposeAsync() => SystemTask.Task.CompletedTask;
 
+    private async SystemTask.Task<string> StatusOf(int taskId)
+    {
+        await using var db = NewContext();
+        var task = await db.Set<TaskEntity>().SingleAsync(t => t.Id == taskId);
+        return task.Status;
+    }
+
     [Fact]
     public async SystemTask.Task ANonMember_IsForbidden_AndNoGitHubCallIsMade()
     {
@@ -687,5 +694,60 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
         Assert.NotNull(repository.CommitsRefreshedAtUtc);
         Assert.Null(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task NothingRefreshed_DoesNotRunTheResolver()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
+        repository.CommitsRefreshedAtUtc = DateTime.UtcNow;
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var linksBefore = await db.TaskLinks.CountAsync();
+        var service = NewService(db, new FakeGitHubApiClient());
+
+        await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
+
+        // The resolver reads every commit, branch and pull request in the company. A cooldown hit
+        // must stay free.
+        Assert.Equal(linksBefore, await db.TaskLinks.CountAsync());
+    }
+
+    [Fact]
+    public async SystemTask.Task AMergedPullRequest_MovesTheTask_AndIsCounted()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: "rigon");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.TasksTransitioned);
+        Assert.Equal(TaskStatuses.Done, await StatusOf(_ts42TaskId));
+    }
+
+    [Fact]
+    public async SystemTask.Task LastSyncedAtUtc_ComesFromTheTasksOwnRepositories()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var before = DateTime.UtcNow;
+        var result = await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
+
+        // Not the installation's ActivitySyncedAtUtc, which only the company-wide sync writes and
+        // which this run deliberately leaves alone.
+        Assert.NotNull(result.Value!.LastSyncedAtUtc);
+        Assert.True(result.Value!.LastSyncedAtUtc >= before);
+
+        await using var verify = NewContext();
+        var installation = await verify.GitHubInstallations.FirstAsync(i => i.CompanyId == _companyId);
+        Assert.Null(installation.ActivitySyncedAtUtc);
     }
 }

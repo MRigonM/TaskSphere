@@ -92,6 +92,11 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
             CompanyId = _companyId,
             FullName = "rigon-org/api",
             DefaultBranch = "main",
+            // Deliberately different from installation.ActivitySyncedAtUtc above: LastSyncedAtUtc
+            // is derived from the repository's own stamps, not the installation column, and only
+            // the company-wide sync ever writes that column.
+            CommitsRefreshedAtUtc = new DateTime(2026, 8, 13, 9, 0, 0, DateTimeKind.Utc),
+            PullRequestsRefreshedAtUtc = new DateTime(2026, 8, 13, 9, 0, 0, DateTimeKind.Utc),
         };
         db.GitHubRepositories.Add(repository);
         await db.SaveChangesAsync();
@@ -196,7 +201,9 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
         Assert.Equal(17, pull.Number);
         Assert.Equal(PullRequestState.Merged, pull.State);
 
-        Assert.Equal(new DateTime(2026, 8, 12, 7, 0, 0), activity.LastSyncedAtUtc);
+        // From the repository's own stamps, not installation.ActivitySyncedAtUtc (2026-08-12) —
+        // only the company-wide sync writes that column, and this read must not read it.
+        Assert.Equal(new DateTime(2026, 8, 13, 9, 0, 0), activity.LastSyncedAtUtc);
     }
 
     [Fact]
@@ -311,7 +318,10 @@ public class GitHubTaskActivityReadTests : IAsyncLifetime
         var result = await Read();
 
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value!.LastSyncedAtUtc);
+        // LastSyncedAtUtc now comes from the repositories' own stamps, not the installation
+        // column, so a soft-deleted installation no longer blanks it — the repository's stamps
+        // are untouched by that deletion.
+        Assert.NotNull(result.Value!.LastSyncedAtUtc);
     }
 
     [Fact]

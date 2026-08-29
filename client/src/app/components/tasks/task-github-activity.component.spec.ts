@@ -152,9 +152,9 @@ function createComponent(options: { role?: string } = {}) {
   });
 
   const http = TestBed.inject(HttpTestingController);
-  const component = TestBed.createComponent(TaskGitHubActivityComponent).componentInstance;
+  const fixture = TestBed.createComponent(TaskGitHubActivityComponent);
 
-  return { component, http };
+  return { component: fixture.componentInstance, http, fixture };
 }
 
 describe('TaskGitHubActivityComponent', () => {
@@ -573,6 +573,24 @@ describe('TaskGitHubActivityComponent', () => {
 
     expect(host(fixture).querySelector('[data-create-branch]')).not.toBeNull();
     expect(host(fixture).querySelector('[data-sync]')).toBeNull();
+  });
+
+  it('keeps the company-wide Sync button for admins only', () => {
+    const { component, fixture } = createComponent();
+
+    component.isCompanyAdmin = true;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-sync]')).toBeTruthy();
+  });
+
+  it('does not show the Sync button to a member, who no longer needs it', () => {
+    const { component, fixture } = createComponent();
+
+    component.isCompanyAdmin = false;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-sync]')).toBeFalsy();
   });
 
   it('opens the dialog on click', async () => {

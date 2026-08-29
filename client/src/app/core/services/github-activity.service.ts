@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { SyncActivityResultDto, TaskGitHubActivityDto, BranchSuggestionDto, CreateBranchDto, CreatedBranchDto } from '../models/github-activity.models';
+import { SyncActivityResultDto, TaskActivityRefreshDto, TaskGitHubActivityDto, BranchSuggestionDto, CreateBranchDto, CreatedBranchDto } from '../models/github-activity.models';
 
 /**
  * Two endpoints on two controllers, and the split is deliberate: the read sits on
@@ -17,6 +17,16 @@ export class GitHubActivityService {
   getForTask(taskId: number): Observable<TaskGitHubActivityDto> {
     return this.http.get<TaskGitHubActivityDto>(
       `${environment.apiUrl}Tasks/${taskId}/github-activity`
+    );
+  }
+
+  /**
+   * Task-scoped and member-reachable, unlike sync(). Fired on open so the panel shows current
+   * activity without anyone pressing the admin-only Sync button.
+   */
+  refreshForTask(taskId: number): Observable<TaskActivityRefreshDto> {
+    return this.http.post<TaskActivityRefreshDto>(
+      `${environment.apiUrl}Tasks/${taskId}/github-refresh`, null
     );
   }
 

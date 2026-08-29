@@ -74,11 +74,31 @@ export class TaskGitHubActivityComponent implements OnChanges {
     // alone when a read fails, which is right for a retry of the same task and wrong across
     // a task change — without this, task 42's commits stay on screen under an error about 43.
     this.data.set(null);
-    this.load();
+    this.refreshThenLoad();
   }
 
   retry() {
     this.load();
+  }
+
+  /**
+   * The refresh is best-effort: its failure must not stop the read, because the mirror still
+   * holds whatever the last successful sync wrote, and showing that beats showing an error over
+   * data that exists.
+   */
+  private refreshThenLoad() {
+    this.loading.set(true);
+
+    this.activityApi
+      .refreshForTask(this.taskId)
+      .pipe(
+        tap(result => {
+          if (result.tasksTransitioned > 0)
+            this.tasksMoved.emit();
+        }),
+        catchError(() => of(null))
+      )
+      .subscribe(() => this.load());
   }
 
   load() {

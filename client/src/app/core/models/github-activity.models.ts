@@ -63,6 +63,17 @@ export interface SyncFailureDto {
   branch: string | null;
 }
 
+/**
+ * Returned by the task-scoped, member-reachable refresh. `lastSyncedAtUtc` mirrors the same
+ * field on `TaskGitHubActivityDto` so the panel can show it without a second read.
+ */
+export interface TaskActivityRefreshDto {
+  refreshed: boolean;
+  repositoriesRefreshed: number;
+  tasksTransitioned: number;
+  lastSyncedAtUtc: string | null;
+}
+
 /** Partial success is a result, not an error: a 200 can still carry failures. */
 export interface SyncActivityResultDto {
   repositoriesSynced: number;

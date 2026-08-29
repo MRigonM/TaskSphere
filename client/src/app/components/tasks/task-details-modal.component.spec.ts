@@ -36,6 +36,16 @@ const emptyActivity: TaskGitHubActivityDto = {
   lastSyncedAtUtc: null,
 };
 
+/** Answers the refresh-on-open POST that now precedes every read of the activity panel. */
+function flushRefresh(http: HttpTestingController, taskId: number) {
+  http.expectOne(`${environment.apiUrl}Tasks/${taskId}/github-refresh`).flush({
+    refreshed: true,
+    repositoriesRefreshed: 0,
+    tasksTransitioned: 0,
+    lastSyncedAtUtc: null,
+  });
+}
+
 async function setup(payload: TaskGitHubActivityDto = activity) {
   localStorage.setItem(
     'tasksphere_auth',
@@ -55,6 +65,7 @@ async function setup(payload: TaskGitHubActivityDto = activity) {
   fixture.componentRef.setInput('sprints', []);
   fixture.detectChanges();
 
+  flushRefresh(http, 42);
   http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(payload);
   await fixture.whenStable();
   fixture.detectChanges();
@@ -142,6 +153,7 @@ describe('TaskDetailsModalComponent tabs', () => {
     fixture.componentRef.setInput('task', { id: 43, key: 'TS-43', title: 'Other', status: 'Open' });
     fixture.detectChanges();
 
+    flushRefresh(http, 43);
     http.expectOne(`${environment.apiUrl}Tasks/43/github-activity`).flush(emptyActivity);
     await fixture.whenStable();
     fixture.detectChanges();

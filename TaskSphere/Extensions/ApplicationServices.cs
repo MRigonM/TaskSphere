@@ -104,6 +104,7 @@ public static class ApplicationServices
         services.AddScoped<IProjectActivityRefreshService, ProjectActivityRefreshService>();
         services.AddScoped<GitHubPullRequestMirror>();
         services.AddScoped<GitHubBranchMirror>();
+        services.AddScoped<GitHubCommitMirror>();
         services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
 
         services.AddHttpClient<IGitHubTokenService, GitHubTokenService>(ConfigureGitHubApiClient);

@@ -212,8 +212,9 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var transitions = new MergeTransitionService(uow, new AuditQueue());
         var pullMirror = new GitHubPullRequestMirror(api, uow);
         var branchMirror = new GitHubBranchMirror(api, uow);
+        var commitMirror = new GitHubCommitMirror(api, uow);
 
-        return await new GitHubActivitySyncService(api, uow, resolver, transitions, pullMirror, branchMirror)
+        return await new GitHubActivitySyncService(api, uow, resolver, transitions, pullMirror, branchMirror, commitMirror)
             .SyncCompanyAsync(_companyId, "rigon");
     }
 
@@ -1753,5 +1754,21 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // join rows would leave run 1's link in place and this test green while the decision it
         // is named for had been reversed underneath it.
         Assert.Single(await final.GitHubBranchCommits.ToListAsync());
+    }
+
+    [Fact]
+    public void TheCommitsPass_LivesInTheMirror_NotInTheSyncService()
+    {
+        var syncSource = File.ReadAllText(
+            "../../../../TaskSphere.Infrastructure/Services/GitHubActivitySyncService.cs");
+        var mirrorSource = File.ReadAllText(
+            "../../../../TaskSphere.Infrastructure/Services/GitHubCommitMirror.cs");
+
+        // The commits listing URL is the pass's fingerprint. Two copies means the guards can drift.
+        Assert.DoesNotContain("/commits?sha=", syncSource);
+        Assert.Contains("/commits?sha=", mirrorSource);
+
+        // The truncation guard added on 2026-08-28 must have travelled with it.
+        Assert.Contains("rel=\\\"next\\\"", mirrorSource);
     }
 }

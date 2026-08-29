@@ -577,4 +577,67 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         Assert.Contains(api.Calls, c => c.Contains("/pulls"));
         Assert.DoesNotContain(api.Calls, c => c.Contains("/commits?sha="));
     }
+
+    [Fact]
+    public async SystemTask.Task AFreshRepository_FetchesBranchesCommitsAndPulls_AndIsStamped()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Refreshed);
+        Assert.Equal(1, result.Value!.RepositoriesRefreshed);
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        Assert.NotNull(repository.CommitsRefreshedAtUtc);
+        Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailedBranchListing_LeavesBothStampsNull_SoTheNextOpenRetries()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { Fail = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);        // a repository that failed is not a failed request
+        Assert.False(result.Value!.Refreshed);
+
+        await using var verify = NewContext();
+        var repository = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        Assert.Null(repository.CommitsRefreshedAtUtc);
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task OnlyThePassThatRan_IsStamped()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddSeconds(-5);   // inside 60s
+        await seed.SaveChangesAsync();
+        var untouched = repository.PullRequestsRefreshedAtUtc;
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        await service.RefreshAsync(_companyId, _ts42TaskId, MemberUserId, true, null);
+
+        await using var verify = NewContext();
+        var after = await verify.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        Assert.NotNull(after.CommitsRefreshedAtUtc);
+        // The pull pass never ran, so its stamp must not move — otherwise a suppressed pass
+        // silently extends its own cooldown and pull requests go stale for as long as anyone
+        // keeps opening tasks.
+        Assert.Equal(untouched, after.PullRequestsRefreshedAtUtc);
+    }
 }

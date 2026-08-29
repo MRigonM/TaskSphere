@@ -114,37 +114,73 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
             return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(false, 0, 0, LastStamp(repositories)));
 
         var since = now.AddDays(-SyncWindowDays);
+        var refreshed = 0;
 
         foreach (var w in work)
         {
-            // Branches are fetched whenever either pass is due (every entry in `work` qualifies
-            // by construction): the commits pass consumes the branch list the branch pass
-            // returns, so tying the fetch to RefreshPulls alone would starve it.
-            var branchResult = await _branches.RefreshAsync(
-                installation, w.Repository.Id, w.Repository.FullName, cancellationToken);
-
-            if (w.RefreshCommits && branchResult.IsSuccess)
+            try
             {
-                await _commits.RefreshAsync(
-                    installation,
-                    w.Repository.Id,
-                    w.Repository.FullName,
-                    branchResult.Value!,
-                    w.Repository.DefaultBranch,
-                    since,
-                    cancellationToken);
+                // Branches first and unconditionally: the commits pass consumes the list it
+                // returns, and RecordAheadAsync looks up branch rows that must already exist.
+                var branchResult = await _branches.RefreshAsync(
+                    installation, w.Repository.Id, w.Repository.FullName, cancellationToken);
+
+                if (!branchResult.IsSuccess)
+                    continue;
+
+                var didSomething = false;
+
+                if (w.RefreshCommits)
+                {
+                    var (_, commitFailures) = await _commits.RefreshAsync(
+                        installation, w.Repository.Id, w.Repository.FullName, branchResult.Value!,
+                        w.Repository.DefaultBranch, since, cancellationToken);
+
+                    // Any per-branch failure withholds the stamp: a partial pass must not buy
+                    // five minutes of silence for the branches that did not come back.
+                    if (commitFailures.Count == 0)
+                    {
+                        w.Repository.CommitsRefreshedAtUtc = DateTime.UtcNow;
+                        didSomething = true;
+                    }
+                }
+
+                if (w.RefreshPulls)
+                {
+                    var pullResult = await _pullRequests.RefreshAsync(
+                        installation, w.Repository.Id, w.Repository.FullName, since, cancellationToken);
+
+                    if (pullResult.IsSuccess)
+                    {
+                        w.Repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
+                        didSomething = true;
+                    }
+                }
+
+                if (!didSomething)
+                    continue;
+
+                await _unitOfWork.GitHubRepositories.Update(w.Repository, cancellationToken);
+
+                // Per repository, so a later failure cannot discard earlier work.
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                refreshed++;
             }
-
-            if (w.RefreshPulls)
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
-                await _pullRequests.RefreshAsync(
-                    installation, w.Repository.Id, w.Repository.FullName, since, cancellationToken);
+                // A rejected save leaves its entity tracked as Modified; without this the next
+                // repository's save re-sends the bad write and fails too.
+                _unitOfWork.DiscardPendingChanges();
             }
         }
 
-        // Task 5 turns this into stamps, counts and error handling; Task 6 adds the resolver
-        // and merge-transition tail.
-        return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(false, 0, 0, LastStamp(repositories)));
+        // Task 6 adds the resolver and merge-transition tail.
+        return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(
+            Refreshed: refreshed > 0,
+            RepositoriesRefreshed: refreshed,
+            TasksTransitioned: 0,
+            LastSyncedAtUtc: LastStamp(repositories)));
     }
 
     private static DateTime? LastStamp(List<GitHubRepository> r) => null;

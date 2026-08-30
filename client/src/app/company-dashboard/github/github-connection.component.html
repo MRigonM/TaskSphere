@@ -1,0 +1,125 @@
+<div class="mx-auto max-w-6xl px-4 py-8">
+
+  <div>
+    <h1 class="text-2xl font-semibold text-white">GitHub</h1>
+    <p class="text-sm text-white/60">Connect your GitHub organization to TaskSphere</p>
+  </div>
+
+  <div
+    *ngIf="error()"
+    class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"
+  >
+    {{ error() }}
+    <!--
+      Only for the load failure that hid the panel: a null connection is the unknown state. After a
+      failed connect or disconnect the panel is still on screen with its own working button.
+    -->
+    <button
+      *ngIf="!connection()"
+      type="button"
+      (click)="load()"
+      [disabled]="loading()"
+      class="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-semibold text-red-100 hover:bg-red-500/20 transition disabled:opacity-50"
+    >Try again</button>
+  </div>
+
+  <!--
+    A null connection() means the state is unknown — never loaded, or the load failed — which is
+    not the same as "not connected". Only render a verdict once we actually have one, so a failed
+    load says nothing rather than claiming no organization is connected. A *successful* load
+    returning installation: null is a known state and still shows the Connect button (§0q).
+  -->
+  <div *ngIf="loading() || connection()" class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+    <p *ngIf="loading()" class="text-sm text-white/60">Loading…</p>
+
+    <ng-container *ngIf="!loading()">
+      <ng-container *ngIf="connection()?.installation as installation; else notConnected">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-sm text-white">
+              Connected to <span class="font-semibold">{{ installation.accountLogin }}</span>
+              <span class="text-white/60"> · {{ installation.accountType }}</span>
+            </p>
+            <p class="mt-1 text-xs text-white/60">
+              <ng-container *ngIf="installation.repositorySelection === RepositorySelection.All; else selectedRepos">
+                The App has access to every repository in this account. This list refreshes on
+                demand, so repositories added on GitHub since the last refresh are not shown yet.
+              </ng-container>
+              <ng-template #selectedRepos>
+                The App has access to the repositories selected on GitHub.
+              </ng-template>
+            </p>
+          </div>
+          <button
+            *ngIf="auth.isCompany()"
+            type="button"
+            (click)="disconnect()"
+            [disabled]="disconnecting()"
+            class="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition disabled:opacity-50"
+          >
+            Disconnect
+          </button>
+        </div>
+
+        <!--
+          Forward-looking display only. IsSuspended is set exclusively by the installation.suspend
+          webhook, which belongs to B2 — nothing in B1 can produce this state.
+        -->
+        <p
+          *ngIf="installation.isSuspended"
+          class="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+        >
+          This installation is suspended on GitHub. TaskSphere cannot read its repositories until it
+          is unsuspended.
+        </p>
+
+        <p class="mt-4 text-xs text-white/50">
+          Disconnecting removes this organization from TaskSphere. It does not uninstall the
+          TaskSphere App on GitHub — do that from your GitHub settings if you want it gone.
+          Reconnecting restores the same installation.
+        </p>
+
+        <div class="mt-6">
+          <h2 class="text-sm font-semibold text-white">Repositories</h2>
+
+          <p *ngIf="!connection()?.repositories?.length" class="mt-2 text-sm text-white/60">
+            No repositories are available from this installation.
+          </p>
+
+          <ul *ngIf="connection()?.repositories?.length" class="mt-2 divide-y divide-white/10">
+            <li
+              *ngFor="let repository of connection()?.repositories"
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2"
+            >
+              <span class="text-sm text-white">{{ repository.fullName }}</span>
+              <span class="rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/60">
+                {{ repository.isPrivate ? 'Private' : 'Public' }}
+              </span>
+              <span class="text-xs text-white/60">{{ repository.defaultBranch }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <app-github-repository-links />
+      </ng-container>
+
+      <ng-template #notConnected>
+        <p class="text-sm text-white/60">No GitHub organization is connected yet.</p>
+        <!--
+          Required by the plan: companyGuard controls routing, button visibility is a separate
+          template check. Not dead code — do not delete it as redundant with the route guard.
+        -->
+        <button
+          *ngIf="auth.isCompany()"
+          type="button"
+          (click)="connect()"
+          [disabled]="connecting()"
+          class="mt-4 rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50"
+        >
+          Connect GitHub
+        </button>
+      </ng-template>
+    </ng-container>
+  </div>
+
+</div>

@@ -8,6 +8,12 @@ public interface IProjectService
     Task<Result<ProjectDto>> CreateAsync(Guid companyId, CreateProjectDto dto, CancellationToken ct = default);
     Task<Result<IEnumerable<ProjectDto>>> GetAllAsync(Guid companyId, string userId, bool isCompanyAdmin, CancellationToken ct = default);
     Task<Result<ProjectDto>> GetByIdAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default);
+
+    /// <summary>
+    /// The only mutation a project has. Deliberately narrow: see UpdateProjectSettingsDto.
+    /// </summary>
+    Task<Result<ProjectDto>> UpdateSettingsAsync(
+        Guid companyId, int projectId, UpdateProjectSettingsDto dto, CancellationToken ct = default);
     Task<Result<IEnumerable<MemberDto>>> GetMembersAsync(Guid companyId, int projectId, string userId, bool isCompanyAdmin, CancellationToken ct = default);
     Task<Result<string>> AddMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default);
     Task<Result<string>> RemoveMemberAsync(Guid companyId, int projectId, string userId, CancellationToken ct = default);

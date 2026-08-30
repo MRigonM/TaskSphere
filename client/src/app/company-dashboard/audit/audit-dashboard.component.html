@@ -120,11 +120,20 @@
           <td class="px-4 py-3 text-white/80">{{ log.action }}</td>
           <td class="px-4 py-3">
               <span
+                *ngIf="!hasNoRequest(log); else noStatus"
                 class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"
                 [ngClass]="statusClass(log.statusCode)"
               >{{ log.statusCode }}</span>
+              <!-- An entry raised inside the app has no status. Rendering its zero through
+                   statusClass paints a successful action red, which is worse than saying
+                   nothing. -->
+              <ng-template #noStatus>
+                <span data-testid="no-status" class="text-xs text-white/40">—</span>
+              </ng-template>
           </td>
-          <td class="px-4 py-3 text-white/60 text-xs">{{ log.durationMs }}ms</td>
+          <td class="px-4 py-3 text-white/60 text-xs">
+            {{ hasNoRequest(log) ? '—' : log.durationMs + 'ms' }}
+          </td>
         </tr>
         </tbody>
       </table>
@@ -159,7 +168,7 @@
         </div>
         <div>
           <p class="text-xs text-white/50">Duration</p>
-          <p class="mt-0.5 text-white">{{ selectedLog()!.durationMs }}ms</p>
+          <p class="mt-0.5 text-white">{{ hasNoRequest(selectedLog()!) ? '—' : selectedLog()!.durationMs + 'ms' }}</p>
         </div>
       </div>
       <div class="mt-4">

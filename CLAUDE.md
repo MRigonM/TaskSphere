@@ -82,3 +82,16 @@ A second in-process validation tier (`ITaskValidationService`, `ISprintValidatio
 | `client/src/app/core/services/auth-store.service.ts` | Client-side auth state (signals + localStorage) |
 | `client/src/app/core/interceptors/auth.interceptor.ts` | JWT attachment interceptor |
 | `client/src/app/app.routes.ts` | All Angular routes with guards |
+
+## graphify
+
+Graphify indexes **`docs/` only** — the design specs and implementation plans under `docs/` and `docs/superpowers/`. Its graph lives at `graphify-out/`.
+
+**Graphify does not index source code in this project.** CodeGraph owns all code questions (see the CodeGraph section above). Do not run `graphify` against the repo root or any source directory, and do not use it to answer "what calls this" / "what breaks if I change this".
+
+Rules:
+- For questions about **design decisions, specs, or plans** — why a feature was designed a certain way, what a plan covered, how two design docs relate — run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for relationships between documents and `graphify explain "<concept>"` for a focused concept.
+- For anything about **code structure or behaviour**, use CodeGraph (`codegraph_explore` / `codegraph explore`), not graphify.
+- If `graphify-out/wiki/index.md` exists, use it to navigate the doc set.
+- Read `graphify-out/GRAPH_REPORT.md` only when query/path/explain do not surface enough context.
+- After editing files under `docs/`, run `graphify docs --update` to refresh the graph. Graphify does not auto-sync. Editing source code requires no graphify run.

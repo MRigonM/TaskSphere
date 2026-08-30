@@ -482,3 +482,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local tooling and design docs
+docs/
+graphify-out/
+.codegraph/
+.claude/

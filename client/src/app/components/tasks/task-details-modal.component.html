@@ -13,11 +13,44 @@
       <button class="text-slate-400 hover:text-white" (click)="close()">✕</button>
     </div>
 
+    <div class="mb-4 flex gap-1 border-b border-white/10">
+      <button
+        data-tab="details"
+        type="button"
+        class="px-3 py-2 text-sm"
+        [class.text-white]="activeTab() === 'details'"
+        [class.border-b-2]="activeTab() === 'details'"
+        [class.border-indigo-400]="activeTab() === 'details'"
+        [class.text-slate-400]="activeTab() !== 'details'"
+        (click)="activeTab.set('details')"
+      >
+        Details
+      </button>
+
+      <button
+        data-tab="activity"
+        type="button"
+        class="flex items-center gap-2 px-3 py-2 text-sm"
+        [class.text-white]="activeTab() === 'activity'"
+        [class.border-b-2]="activeTab() === 'activity'"
+        [class.border-indigo-400]="activeTab() === 'activity'"
+        [class.text-slate-400]="activeTab() !== 'activity'"
+        (click)="activeTab.set('activity')"
+      >
+        Activity
+        <span
+          *ngIf="activity.count() > 0"
+          data-count
+          class="rounded-full bg-white/10 px-2 py-0.5 text-xs"
+        >{{ activity.count() }}</span>
+      </button>
+    </div>
+
     <div *ngIf="error()" class="mb-3 rounded-lg bg-red-500/10 text-red-200 px-3 py-2 text-sm">
       {{ error() }}
     </div>
 
-    <form [formGroup]="form" (ngSubmit)="save()" class="space-y-4">
+    <form [formGroup]="form" (ngSubmit)="save()" class="space-y-4" [hidden]="activeTab() !== 'details'">
       <div>
         <label class="text-xs text-slate-400">Title</label>
         <input
@@ -118,5 +151,15 @@
         </button>
       </div>
     </form>
+
+    <!-- Mounted, not conditional: the child owns the count, so the badge needs the panel to
+         have loaded before anyone opens the tab. `#activity` is what feeds it — no second
+         endpoint and no duplicate state on the modal. -->
+    <app-task-github-activity
+      #activity
+      [taskId]="task.id"
+      [hidden]="activeTab() !== 'activity'"
+      (tasksMoved)="tasksMoved.emit()"
+    ></app-task-github-activity>
   </div>
 </div>

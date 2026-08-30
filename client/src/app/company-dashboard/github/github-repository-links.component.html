@@ -1,0 +1,126 @@
+﻿<div class="mt-8 border-t border-white/10 pt-6">
+  <h2 class="text-sm font-semibold text-white">Repository links</h2>
+  <p class="mt-1 text-xs text-white/60">
+    Which projects each repository feeds. A repository can serve several projects; linking only
+    connects the two inside TaskSphere — nothing changes on GitHub.
+  </p>
+
+  <div
+    *ngIf="error()"
+    class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+  >
+    {{ error() }}
+    <button
+      type="button"
+      (click)="retry()"
+      class="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-semibold text-red-100 hover:bg-red-500/20 transition"
+    >Try again</button>
+  </div>
+
+  <!--
+    Selected state lives on the options, not on the select's [value]: a [value] binding on the
+    parent is applied before *ngFor has created the options.
+  -->
+  <select
+    class="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white outline-none"
+    aria-label="Filter by project"
+    (change)="setFilter($any($event.target).value)"
+    [disabled]="loading()"
+  >
+    <option value="" [selected]="filterProjectId() === null" class="bg-slate-800 text-white">All projects</option>
+    <option
+      *ngFor="let project of projects()"
+      [value]="project.id"
+      [selected]="project.id === filterProjectId()"
+      class="bg-slate-800 text-white"
+    >
+      {{ project.key }} · {{ project.name }}
+    </option>
+  </select>
+
+  <p *ngIf="loading()" class="mt-3 text-sm text-white/60">Loading…</p>
+
+  <ng-container *ngIf="data() as linkData">
+    <p *ngIf="!linkData.repositories.length" class="mt-3 text-sm text-white/60">
+      No repositories are available from this installation.
+    </p>
+
+    <p
+      *ngIf="linkData.repositories.length && !rows().length && !unavailable().length"
+      class="mt-3 text-sm text-white/60"
+    >
+      No repositories are linked to this project yet.
+    </p>
+
+    <p
+      *ngIf="linkData.repositories.length && !rows().length && unavailable().length"
+      class="mt-3 text-sm text-white/60"
+    >
+      Every repository linked to this project has been dropped from the installation. Nothing has
+      been unlinked — the links return if the repositories are added back to the App on GitHub.
+    </p>
+
+    <ul *ngIf="rows().length" class="mt-3 divide-y divide-white/10">
+      <li *ngFor="let repository of rows()" [attr.data-repository]="repository.id" class="py-3">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span class="text-sm text-white">{{ repository.fullName }}</span>
+
+          <span *ngIf="!repository.projects.length" class="text-xs text-white/50">not linked</span>
+
+          <span
+            *ngFor="let project of repository.projects"
+            [attr.data-chip]="project.key"
+            [title]="project.name"
+            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/80"
+          >
+            {{ project.key }}
+            <button
+              type="button"
+              (click)="unlink(repository.id, project.id)"
+              [disabled]="busyRepoId() === repository.id"
+              [attr.aria-label]="'Unlink ' + project.key + ' from ' + repository.fullName"
+              class="text-white/50 hover:text-white transition disabled:opacity-50"
+            >×</button>
+          </span>
+
+          <button
+            type="button"
+            data-add
+            (click)="togglePicker(repository.id)"
+            [disabled]="busyRepoId() === repository.id || !available(repository).length"
+            [attr.aria-label]="'Link a project to ' + repository.fullName"
+            class="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-semibold text-white hover:bg-white/10 transition disabled:opacity-40"
+          >+</button>
+        </div>
+
+        <ul *ngIf="pickerRepoId() === repository.id" class="mt-2 flex flex-wrap gap-2">
+          <li *ngFor="let project of available(repository)">
+            <button
+              type="button"
+              data-pick
+              (click)="link(repository.id, project.id)"
+              [disabled]="busyRepoId() === repository.id"
+              class="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1 text-xs text-indigo-100 hover:bg-indigo-500/20 transition disabled:opacity-50"
+            >{{ project.key }} · {{ project.name }}</button>
+          </li>
+        </ul>
+      </li>
+    </ul>
+
+    <!--
+      Load-bearing: a link whose repository was dropped from the installation is filtered out of
+      the table server-side and survives only as this line. Without it the link looks vanished.
+    -->
+    <p
+      *ngFor="let entry of unavailable()"
+      class="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+    >
+      {{ entry.projectKey }} has {{ entry.count }}
+      {{ entry.count === 1 ? 'link to a repository' : 'links to repositories' }}
+      no longer available from this installation. The
+      {{ entry.count === 1 ? 'link is' : 'links are' }} kept — they come back if the
+      {{ entry.count === 1 ? 'repository is' : 'repositories are' }} added to the App on GitHub
+      again.
+    </p>
+  </ng-container>
+</div>

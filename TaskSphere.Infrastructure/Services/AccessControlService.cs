@@ -61,7 +61,7 @@ public class AccessControlService : IAccessControlService
             .Where(p => p.CompanyId == companyId)
             .Where(p => p.Members.Any(m => m.UserId == userId))
             .OrderBy(p => p.Name)
-            .Select(p => new ProjectDto(p.Id, p.Name, p.Key))
+            .Select(p => new ProjectDto(p.Id, p.Name, p.Key, p.AutoDoneOnMerge))
             .ToListAsync(ct);
     }
 }

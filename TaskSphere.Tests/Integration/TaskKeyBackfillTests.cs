@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaskSphere.Infrastructure.Data;
@@ -26,23 +24,43 @@ public class TaskKeyBackfillTests : IAsyncLifetime
             .Options;
 
         return new ApplicationDbContext(options);
+
     }
+    /// <summary>
+    /// The backfill's whole purpose is to run against data that does not yet satisfy the
+    /// task-key unique indexes: seeding two tasks with the default Number = 0 would violate
+    /// IX_Tasks_ProjectId_Number before the backfill ever ran. Production applied the column
+    /// migration, backfilled, then applied the index migration — these tests reproduce that
+    /// state by migrating to the CURRENT schema and dropping the two indexes again.
+    /// <para>
+    /// It used to stop the migrator at AddTaskKeyColumns instead. That pinned the database to
+    /// a 2026-08 schema while the EF model stayed current, so the first column added to
+    /// Projects or Tasks after that date broke every insert here with "Invalid column name".
+    /// AutoDoneOnMerge was that column.
+    /// </para>
+    /// </summary>
+    private const string DropTaskKeyIndexes =
+        "DROP INDEX IX_Tasks_ProjectId_Number ON Tasks;" +
+        "DROP INDEX IX_Projects_CompanyId_Key ON Projects;";
 
     /// <summary>
-    /// The migration that adds the columns, but NOT the one that adds the unique
-    /// indexes. The backfill's whole purpose is to run against data that does not yet
-    /// satisfy those indexes, so a fully-migrated database cannot express the scenario:
-    /// seeding two tasks with the default Number = 0 would violate
-    /// IX_Tasks_ProjectId_Number before the backfill ever ran. Production applied
-    /// migration 1, backfilled, then applied migration 2 — these tests do the same.
+    /// The same two indexes, recreated. Applying these after the backfill is itself an
+    /// assertion: a unique index only creates successfully if the backfill left every key and
+    /// number valid. This is what the second half of the round-trip used to get from running
+    /// the index migration, which is now already applied by <see cref="InitializeAsync"/>.
+    /// Mirrors 20260801152814_AddTaskKeyUniqueIndexes.
     /// </summary>
-    private const string PreIndexMigration = "AddTaskKeyColumns";
+    private const string CreateTaskKeyIndexes =
+        "CREATE UNIQUE INDEX IX_Tasks_ProjectId_Number ON Tasks ([ProjectId], [Number]) " +
+        "WHERE [ProjectId] IS NOT NULL;" +
+        "CREATE UNIQUE INDEX IX_Projects_CompanyId_Key ON Projects ([CompanyId], [Key]);";
 
     public async Task InitializeAsync()
     {
         await using var db = NewContext();
         await db.Database.EnsureDeletedAsync();
-        await db.Database.GetService<IMigrator>().MigrateAsync(PreIndexMigration);
+        await db.Database.MigrateAsync();
+        await db.Database.ExecuteSqlRawAsync(DropTaskKeyIndexes);
     }
 
     public async Task DisposeAsync()
@@ -97,7 +115,7 @@ public class TaskKeyBackfillTests : IAsyncLifetime
         {
             // Applying migration 2 now is itself an assertion: the unique indexes only
             // create successfully if the backfill left every key and number valid.
-            await db.Database.GetService<IMigrator>().MigrateAsync();
+            await db.Database.ExecuteSqlRawAsync(CreateTaskKeyIndexes);
 
             var project = await db.Projects.SingleAsync(p => p.Id == projectId);
             Assert.Equal("TS", project.Key);

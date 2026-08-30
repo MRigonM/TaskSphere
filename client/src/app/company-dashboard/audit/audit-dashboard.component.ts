@@ -5,6 +5,7 @@ import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartData, ChartOptions } from 'chart.js';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { AuditService } from '../../core/services/audit.service';
 import { AuditLogDto, AuditStatsDto } from '../../core/models/audit.models';
 
@@ -97,7 +98,7 @@ export class AuditDashboardComponent implements OnInit {
         ),
         tap(res => this.logs.set(res.items)),
         catchError(err => {
-          this.error.set(this.toMsg(err, 'Failed to load audit logs.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load audit logs.'));
           this.logs.set([]);
           return of(null);
         }),
@@ -181,6 +182,16 @@ export class AuditDashboardComponent implements OnInit {
     }
   }
 
+
+  /**
+   * An entry with no HTTP method came from inside the app, not from a request: the merge →
+   * Done transition is the first of these. Its method, path, IP, status and duration are all
+   * empty by design, and rendering the zero status through statusClass would paint a
+   * successful transition red.
+   */
+  hasNoRequest(log: AuditLogDto): boolean {
+    return !log.httpMethod;
+  }
   statusClass(code: number): string {
     if (code >= 200 && code < 300)
       return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
@@ -198,14 +209,5 @@ export class AuditDashboardComponent implements OnInit {
       case 'PATCH':  return 'border-purple-500/30 bg-purple-500/10 text-purple-200';
       default:       return 'border-white/10 bg-white/5 text-white/60';
     }
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    return (
-      (Array.isArray(err?.error) && err.error.join('\n')) ||
-      err?.error?.message ||
-      err?.message ||
-      fallback
-    );
   }
 }

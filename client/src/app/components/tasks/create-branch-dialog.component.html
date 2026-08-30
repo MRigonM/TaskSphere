@@ -1,0 +1,63 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+  <div class="w-full max-w-md rounded-2xl bg-neutral-900 p-5 text-sm text-white shadow-xl">
+    <div class="mb-3 flex items-center justify-between">
+      <h3 class="text-base font-semibold">Create a GitHub branch</h3>
+      <button type="button" class="text-white/60 hover:text-white" (click)="closed.emit()">✕</button>
+    </div>
+
+    <div *ngIf="loading()" class="text-white/60">Working out the name…</div>
+
+    <div *ngIf="error()" class="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-red-200">{{ error() }}</div>
+
+    <ng-container *ngIf="suggestion() as s">
+      <label class="mb-1 block text-xs text-white/60" for="branch-name">Branch name</label>
+      <input
+        id="branch-name"
+        data-branch-name
+        type="text"
+        class="mb-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 font-mono"
+        [value]="name()"
+        (input)="onName($any($event.target).value)"
+      />
+
+      <div class="mb-3 text-xs" [class.text-amber-300]="!keepsKey()" [class.text-white/50]="keepsKey()">
+        The name has to contain {{ s.taskKey }}, or the branch will not link to this task.
+      </div>
+
+      <ng-container *ngIf="s.repositories.length > 1">
+        <label class="mb-1 block text-xs text-white/60" for="branch-repo">Repository</label>
+        <select
+          id="branch-repo"
+          data-repo-select
+          class="mb-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2"
+          [value]="repositoryId()"
+          (change)="onRepository($any($event.target).value)"
+        >
+          <option *ngFor="let repo of s.repositories" [value]="repo.id">
+            {{ repo.fullName }} ({{ repo.defaultBranch }})
+          </option>
+        </select>
+      </ng-container>
+
+      <div *ngIf="s.repositories.length === 1" class="mb-3 text-xs text-white/50">
+        In <span class="font-mono">{{ s.repositories[0].fullName }}</span>, from
+        <span class="font-mono">{{ s.repositories[0].defaultBranch }}</span>.
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button type="button" class="rounded-xl px-3 py-1 text-white/70 hover:text-white" (click)="closed.emit()">
+          Cancel
+        </button>
+        <button
+          data-create
+          type="button"
+          class="rounded-xl bg-white/10 px-3 py-1 hover:bg-white/20 disabled:opacity-50"
+          [disabled]="!canCreate()"
+          (click)="create()"
+        >
+          {{ creating() ? 'Creating…' : 'Create branch' }}
+        </button>
+      </div>
+    </ng-container>
+  </div>
+</div>

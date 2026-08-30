@@ -4,6 +4,7 @@ import {FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/
 import { finalize, of, switchMap, tap, catchError, map } from 'rxjs';
 import { signal } from '@angular/core';
 
+import { apiErrorMessage } from '../core/http/api-error';
 import { SprintsApiService } from '../core/services/sprints-api.service';
 import { CreateSprintDto, SprintBoardDto, SprintDto, UpdateSprintDto } from '../core/models/sprints.models';
 import {CommonModule, DatePipe} from '@angular/common';
@@ -100,6 +101,8 @@ export class SprintsPageComponent {
           },
         });
       }
+
+      this.refreshGitHubActivity();
     });
 
     this.route.queryParamMap.subscribe(qp => {
@@ -135,6 +138,64 @@ export class SprintsPageComponent {
     this.loadBoard(s.id);
   }
 
+
+  /**
+   * A sync moved at least one task to Done. Unlike a save, the modal stays open, so the board
+   * is re-read and the open modal is re-pointed at the fresh task — otherwise it keeps showing
+   * the status it was opened with, and only a page reload clears it.
+   */
+  onTasksMovedBySync() {
+    const s = this.selectedSprint();
+    if (!s) return;
+    this.loadBoard(s.id);
+  }
+
+  /**
+   * Fired once per project load. Refreshes this project's pull requests and applies any merge →
+   * Done transitions, then re-reads only if something actually moved.
+   *
+   * This runs concurrently with loadSprints(true) (both fire from ngOnInit / the paramMap
+   * subscribe), so selectedSprint may still be null when this resolves. In that case
+   * loadSprints(true) is re-run rather than dropping the signal — it re-selects a sprint and
+   * loads its board, so the transition is not lost to the race.
+   *
+   * Failures are swallowed deliberately: the user did not ask for this call, GitHub being slow
+   * or unreachable must not delay or break a board, and the manual Sync button is still the
+   * visible, diagnosable path.
+   */
+  refreshGitHubActivity() {
+    const pid = this.projectId();
+    if (!pid) return;
+
+    this.projectsApi.refreshGitHub(pid)
+      .pipe(
+        tap((result) => {
+          if (result?.tasksTransitioned > 0) {
+            const s = this.selectedSprint();
+            if (s) this.loadBoard(s.id);
+            else this.loadSprints(true);
+          }
+        }),
+        catchError(() => of(null)),
+      )
+      .subscribe();
+  }
+
+  /**
+   * The board is replaced wholesale on every load, so selectedTask keeps pointing at the
+   * object it was opened with. The modal resets its form in ngOnChanges, which fires on a
+   * reference change.
+   */
+  private repointSelectedTask() {
+    const current = this.selectedTask();
+    const b = this.board();
+    if (!current || !b) return;
+
+    const fresh = [...b.open, ...b.inProgress, ...b.blocked, ...b.done]
+      .find(t => t.id === current.id);
+
+    if (fresh) this.selectedTask.set(fresh);
+  }
   isCompanyAdmin(): boolean {
     return this.auth.isCompany();
   }
@@ -178,7 +239,7 @@ export class SprintsPageComponent {
         }
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprints.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprints.'));
         this.sprints.set([]);
         this.selectedSprint.set(null);
         this.board.set(null);
@@ -219,7 +280,7 @@ export class SprintsPageComponent {
         this.toast.show(isArchived ? 'Sprint was archived' : 'Sprint was unarchived');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to update sprint archive status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update sprint archive status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -294,7 +355,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to set task status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to set task status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -318,7 +379,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to assign task.'));
+        this.error.set(apiErrorMessage(err, 'Failed to assign task.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -369,9 +430,12 @@ export class SprintsPageComponent {
 
     of(null).pipe(
       switchMap(() => this.loadBoardMerged$(sprintId)),
-      tap((b) => this.board.set(b)),
+      tap((b) => {
+        this.board.set(b);
+        this.repointSelectedTask();
+      }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprint board.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprint board.'));
         this.board.set(null);
         return of(null);
       }),
@@ -432,7 +496,7 @@ export class SprintsPageComponent {
         this.toast.show('Sprint was created');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to create sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to create sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -499,7 +563,7 @@ export class SprintsPageComponent {
       }),
       tap((b) => this.board.set(b)),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to update sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -529,7 +593,7 @@ export class SprintsPageComponent {
         this.toast.show(isActive ? 'Sprint was activated' : 'Sprint was deactivated');
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to set active flag.'));
+        this.error.set(apiErrorMessage(err, 'Failed to set active flag.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -560,7 +624,7 @@ export class SprintsPageComponent {
       switchMap(() => this.loadBoardMerged$(s.id)),
       tap((b) => { this.board.set(b); this.toast.show('Sprint was activated'); }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to activate sprint.'));
+        this.error.set(apiErrorMessage(err, 'Failed to activate sprint.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
@@ -583,13 +647,6 @@ export class SprintsPageComponent {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 
   onBoardDrop(ev: CdkDragDrop<any[]>) {

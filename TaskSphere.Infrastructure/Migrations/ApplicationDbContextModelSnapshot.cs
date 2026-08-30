@@ -290,6 +290,353 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.ToTable("Companies");
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubBranch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GitHubRepositoryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HeadSha")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubRepositoryId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_GitHubBranches_RepositoryId_Name");
+
+                    b.ToTable("GitHubBranches");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubBranchCommit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GitHubBranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GitHubCommitId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubCommitId");
+
+                    b.HasIndex("GitHubBranchId", "GitHubCommitId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_GitHubBranchCommits_BranchId_CommitId")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("GitHubBranchCommits");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubCommit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorLogin")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("CommittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GitHubRepositoryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HtmlUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Sha")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubRepositoryId", "Sha")
+                        .IsUnique()
+                        .HasDatabaseName("IX_GitHubCommits_RepositoryId_Sha");
+
+                    b.ToTable("GitHubCommits");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubInstallation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountLogin")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("AccountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("ActivitySyncedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("InstallationId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSuspended")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RepositorySelection")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("InstallationId")
+                        .IsUnique();
+
+                    b.ToTable("GitHubInstallations");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubPullRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorLogin")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GitHubRepositoryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("GitHubUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HeadBranch")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("HtmlUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("MergeTransitionAppliedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("MergedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("OpenedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubRepositoryId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("IX_GitHubPullRequests_RepositoryId_Number");
+
+                    b.ToTable("GitHubPullRequests");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubRepository", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("DefaultBranch")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<int>("GitHubInstallationId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrivate")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("PullRequestsRefreshedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("RepositoryId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubInstallationId");
+
+                    b.HasIndex("RepositoryId")
+                        .IsUnique();
+
+                    b.ToTable("GitHubRepositories");
+                });
+
             modelBuilder.Entity("TaskSphere.Domain.Entities.Identity.AppUser", b =>
                 {
                     b.Property<string>("Id")
@@ -418,6 +765,9 @@ namespace TaskSphere.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AutoDoneOnMerge")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uniqueidentifier");
 
@@ -458,6 +808,53 @@ namespace TaskSphere.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.ProjectRepositoryLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("GitHubRepositoryId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LinkedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubRepositoryId");
+
+                    b.HasIndex("ProjectId", "GitHubRepositoryId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("ProjectRepositoryLinks");
                 });
 
             modelBuilder.Entity("TaskSphere.Domain.Entities.Sprint", b =>
@@ -591,6 +988,74 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.ToTable("Tasks");
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.TaskLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("GitHubBranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GitHubCommitId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GitHubPullRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ViaGitHubBranchId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GitHubBranchId");
+
+                    b.HasIndex("GitHubCommitId");
+
+                    b.HasIndex("GitHubPullRequestId");
+
+                    b.HasIndex("ViaGitHubBranchId");
+
+                    b.HasIndex("TaskId", "GitHubBranchId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TaskLinks_TaskId_BranchId")
+                        .HasFilter("[GitHubBranchId] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.HasIndex("TaskId", "GitHubCommitId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TaskLinks_TaskId_CommitId")
+                        .HasFilter("[GitHubCommitId] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.HasIndex("TaskId", "GitHubPullRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TaskLinks_TaskId_PullRequestId")
+                        .HasFilter("[GitHubPullRequestId] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.ToTable("TaskLinks");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -661,6 +1126,80 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Navigation("Sender");
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubBranch", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubRepository", "Repository")
+                        .WithMany()
+                        .HasForeignKey("GitHubRepositoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Repository");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubBranchCommit", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubBranch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("GitHubBranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubCommit", "Commit")
+                        .WithMany()
+                        .HasForeignKey("GitHubCommitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Commit");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubCommit", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubRepository", "Repository")
+                        .WithMany()
+                        .HasForeignKey("GitHubRepositoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Repository");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubInstallation", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubPullRequest", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubRepository", "Repository")
+                        .WithMany()
+                        .HasForeignKey("GitHubRepositoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Repository");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubRepository", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubInstallation", "Installation")
+                        .WithMany("Repositories")
+                        .HasForeignKey("GitHubInstallationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Installation");
+                });
+
             modelBuilder.Entity("TaskSphere.Domain.Entities.Identity.AppUser", b =>
                 {
                     b.HasOne("TaskSphere.Domain.Entities.Company", "Company")
@@ -699,6 +1238,25 @@ namespace TaskSphere.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.ProjectRepositoryLink", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubRepository", "Repository")
+                        .WithMany()
+                        .HasForeignKey("GitHubRepositoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskSphere.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Repository");
                 });
 
             modelBuilder.Entity("TaskSphere.Domain.Entities.Sprint", b =>
@@ -743,6 +1301,37 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Navigation("Sprint");
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.TaskLink", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubBranch", null)
+                        .WithMany()
+                        .HasForeignKey("GitHubBranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubCommit", null)
+                        .WithMany()
+                        .HasForeignKey("GitHubCommitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubPullRequest", null)
+                        .WithMany()
+                        .HasForeignKey("GitHubPullRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaskSphere.Domain.Entities.Task", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaskSphere.Domain.Entities.GitHubBranch", null)
+                        .WithMany()
+                        .HasForeignKey("ViaGitHubBranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("TaskSphere.Domain.Entities.Company", b =>
                 {
                     b.Navigation("Projects");
@@ -750,6 +1339,11 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Navigation("Sprints");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("TaskSphere.Domain.Entities.GitHubInstallation", b =>
+                {
+                    b.Navigation("Repositories");
                 });
 
             modelBuilder.Entity("TaskSphere.Domain.Entities.Project", b =>

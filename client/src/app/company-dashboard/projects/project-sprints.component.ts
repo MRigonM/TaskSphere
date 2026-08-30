@@ -3,6 +3,7 @@ import { Component, signal } from '@angular/core';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
+import { apiErrorMessage } from '../../core/http/api-error';
 import {SprintsApiService} from '../../core/services/sprints-api.service';
 import {SprintDto} from '../../core/models/sprints.models';
 
@@ -58,7 +59,7 @@ export class ProjectSprintsComponent {
         this.sprints.set(s);
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to load sprints.'));
+        this.error.set(apiErrorMessage(err, 'Failed to load sprints.'));
         this.sprints.set([]);
         return of([]);
       }),
@@ -87,17 +88,10 @@ export class ProjectSprintsComponent {
         this.sprints.set(arr);
       }),
       catchError((err) => {
-        this.error.set(this.toMsg(err, 'Failed to update sprint archive status.'));
+        this.error.set(apiErrorMessage(err, 'Failed to update sprint archive status.'));
         return of(null);
       }),
       finalize(() => this.loading.set(false))
     ).subscribe();
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 }

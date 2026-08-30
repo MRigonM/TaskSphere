@@ -1,6 +1,11 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using TaskSphere.Infrastructure.Configuration;
+using TaskSphere.Infrastructure.Services;
 using TaskSphere.Application.Interfaces;
+using TaskSphere.Application.Mappings;
 using TaskSphere.Application.Services;
 using TaskSphere.Auditing;
 using TaskSphere.Domain.Audit;
@@ -46,7 +51,11 @@ public static class ApplicationServices
 
         services.AddDataProtection();
         
-        services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+        // The assembly holding the profiles, not every assembly loaded in the process:
+        // GetTypes() throws ReflectionTypeLoadException on any assembly whose types cannot be
+        // enumerated, which takes startup down with it. MappingProfile is the only Profile in
+        // the solution, so this is equivalent and cannot fail on an unrelated dependency.
+        services.AddAutoMapper(typeof(MappingProfile).Assembly);
         
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IReadOnlyUnitOfWork, UnitOfWork>();
@@ -71,6 +80,52 @@ public static class ApplicationServices
 
         services.AddHostedService<TaskSphere.Startup.TaskKeyBackfillService>();
 
+        //GitHub
+        services.AddMemoryCache();
+
+        services.AddOptions<GitHubAppOptions>()
+            .Bind(configuration.GetSection(GitHubAppOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<GitHubAppOptions>, GitHubAppOptionsValidator>();
+
+        // Singleton: it owns an RSA key that must outlive any single request, because
+        // Microsoft.IdentityModel caches signature providers against it.
+        services.AddSingleton<IGitHubAppJwtProvider, GitHubAppJwtProvider>();
+
+        services.AddScoped<IGitHubInstallStateService, GitHubInstallStateService>();
+        services.AddScoped<IGitHubConnectionService, GitHubConnectionService>();
+        services.AddScoped<IGitHubRepositorySyncService, GitHubRepositorySyncService>();
+        services.AddScoped<IGitHubConnectionReadService, GitHubConnectionReadService>();
+        services.AddScoped<IGitHubProjectLinkService, GitHubProjectLinkService>();
+        services.AddScoped<IGitHubTaskLinkResolver, GitHubTaskLinkResolver>();
+        services.AddScoped<IGitHubActivitySyncService, GitHubActivitySyncService>();
+        services.AddScoped<IMergeTransitionService, MergeTransitionService>();
+        services.AddScoped<IGitHubBranchService, GitHubBranchService>();
+        services.AddScoped<IProjectActivityRefreshService, ProjectActivityRefreshService>();
+        services.AddScoped<GitHubPullRequestMirror>();
+        services.AddScoped<GitHubBranchMirror>();
+        services.AddScoped<IGitHubTaskActivityService, GitHubTaskActivityService>();
+
+        services.AddHttpClient<IGitHubTokenService, GitHubTokenService>(ConfigureGitHubApiClient);
+        services.AddHttpClient<IGitHubApiClient, GitHubApiClient>(ConfigureGitHubApiClient);
+
+        // Deliberately NOT ConfigureGitHubApiClient (§0p): the OAuth token exchange needs
+        // Accept: application/json, and this client must never share a handler chain with the
+        // installation-token clients — a user token crossing into that path is a tenancy leak.
+        services.AddHttpClient<IGitHubUserAuthService, GitHubUserAuthService>(client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("TaskSphere", "1.0"));
+        });
+
         return services;
+    }
+
+    // GitHub rejects requests without a User-Agent, and pins response shape to the API
+    // version header. Applied to both GitHub clients.
+    private static void ConfigureGitHubApiClient(HttpClient client)
+    {
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("TaskSphere", "1.0"));
     }
 }

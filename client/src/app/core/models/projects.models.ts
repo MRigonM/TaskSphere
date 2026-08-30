@@ -7,6 +7,7 @@ export interface ProjectDto {
   id: number;
   name: string;
   key: string;
+  autoDoneOnMerge: boolean;
 }
 
 export interface AddMemberDto {
@@ -19,4 +20,10 @@ export interface MemberDto {
   userId: string;
   userName: string;
   email: string;
+}
+
+export interface ProjectActivityRefreshDto {
+  refreshed: boolean;
+  repositoriesRefreshed: number;
+  tasksTransitioned: number;
 }

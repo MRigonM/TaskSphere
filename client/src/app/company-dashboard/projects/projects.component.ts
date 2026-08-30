@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectDto } from '../../core/models/projects.models';
 import { ProjectsApiService } from './projects.service';
 import {Router} from '@angular/router';
@@ -52,7 +53,7 @@ export class ProjectComponent {
         ),
         tap((res) => this.projects.set(res ?? [])),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to load projects.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load projects.'));
           this.projects.set([]);
           return of([]);
         }),
@@ -85,7 +86,7 @@ export class ProjectComponent {
           this.toast.show('Project was created');
         }),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to create project.'));
+          this.error.set(apiErrorMessage(err, 'Failed to create project.'));
           return of(null);
         }),
         finalize(() => this.loading.set(false))
@@ -129,12 +130,5 @@ export class ProjectComponent {
 
   isCompany(): boolean {
     return this.authStore.isCompany();
-  }
-
-  private toMsg(err: any, fallback: string): string {
-    if (Array.isArray(err?.error)) return err.error.join('\n');
-    if (typeof err?.error === 'string') return err.error;
-    if (err?.status === 0) return 'API unreachable / CORS error.';
-    return fallback;
   }
 }

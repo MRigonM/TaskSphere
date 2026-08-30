@@ -3,6 +3,7 @@ import {Component, computed, HostListener, inject, signal} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
+import { apiErrorMessage } from '../../core/http/api-error';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/models/account.models';
 import { ToastService } from '../../core/services/toast.service';
@@ -81,7 +82,7 @@ export class UsersDashboardComponent {
         switchMap(() => this.account.getUsers(query)),
         tap((res) => this.users.set(res ?? [])),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to load users.'));
+          this.error.set(apiErrorMessage(err, 'Failed to load users.'));
           this.users.set([]);
           return of([]);
         }),
@@ -208,7 +209,7 @@ export class UsersDashboardComponent {
             this.toast.show('User was created');
           }),
           catchError((err) => {
-            this.error.set(this.toMsg(err, 'Failed to create user.'));
+            this.error.set(apiErrorMessage(err, 'Failed to create user.'));
             return of(null);
           }),
           finalize(() => this.loading.set(false))
@@ -254,7 +255,7 @@ export class UsersDashboardComponent {
           this.toast.show('User was updated');
         }),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to update user.'));
+          this.error.set(apiErrorMessage(err, 'Failed to update user.'));
           return of(null);
         }),
         finalize(() => this.loading.set(false))
@@ -276,20 +277,11 @@ export class UsersDashboardComponent {
           this.toast.show('User was deleted', 'error');
         }),
         catchError((err) => {
-          this.error.set(this.toMsg(err, 'Failed to delete user.'));
+          this.error.set(apiErrorMessage(err, 'Failed to delete user.'));
           return of(null);
         }),
         finalize(() => this.loading.set(false))
       )
       .subscribe();
-  }
-
-  private toMsg(err: any, fallback: string) {
-    return (
-      (Array.isArray(err?.error) && err.error.join('\n')) ||
-      err?.error?.message ||
-      err?.message ||
-      fallback
-    );
   }
 }

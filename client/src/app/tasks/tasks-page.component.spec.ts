@@ -1,0 +1,235 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ActivatedRoute } from '@angular/router';
+import { of, throwError } from 'rxjs';
+
+import { TasksPageComponent } from './tasks-page.component';
+import { TasksApiService } from '../core/services/tasks-api.service';
+import { SprintsApiService } from '../core/services/sprints-api.service';
+import { AccountApiService } from '../core/services/account-api.service';
+import { ProjectsApiService } from '../company-dashboard/projects/projects.service';
+import { ToastService } from '../core/services/toast.service';
+import { TaskDetailsModalComponent } from '../components/tasks/task-details-modal.component';
+
+const openTask = { id: 42, key: 'TS-42', title: 'Panel', status: 'InProgress', projectId: 7 };
+const doneTask = { ...openTask, status: 'Done' };
+
+function setup() {
+  localStorage.setItem(
+    'tasksphere_auth',
+    JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
+  );
+  // exactly what a sync that moved it looks like from the client's side.
+  // The backlog reports the task as the caller last left it; the test changes the answer at
+  // the moment the sync would have moved it.
+  const getBacklog = vi.fn().mockReturnValue(of([openTask]));
+
+  const tasksApi = {
+    getBacklog,
+    getBySprint: vi.fn().mockReturnValue(of([])),
+    getById: vi.fn().mockReturnValue(of(openTask)),
+  };
+
+  const projectsApi = {
+    getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
+    getMembers: vi.fn().mockReturnValue(of([])),
+    refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0 })),
+  };
+
+  TestBed.configureTestingModule({
+    imports: [TasksPageComponent],
+    providers: [
+      provideHttpClient(),
+      provideHttpClientTesting(),
+      { provide: TasksApiService, useValue: tasksApi },
+      { provide: SprintsApiService, useValue: { getByProject: vi.fn().mockReturnValue(of([])) } },
+      { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
+      {
+        provide: ProjectsApiService,
+        useValue: projectsApi,
+      },
+      { provide: ToastService, useValue: { show: vi.fn() } },
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          paramMap: of(new Map([['projectId', '7']]) as any),
+          queryParamMap: of(new Map() as any),
+        },
+      },
+    ],
+  });
+
+  const fixture = TestBed.createComponent(TasksPageComponent);
+  fixture.detectChanges();
+
+  return { fixture, tasksApi, projectsApi };
+}
+
+describe('TasksPageComponent — a sync that moved tasks', () => {
+  it('re-reads the backlog and re-points the open modal at the fresh task', async () => {
+    const { fixture, tasksApi } = setup();
+
+    fixture.componentInstance.openTaskDetails(openTask as any);
+    fixture.detectChanges();
+
+    const readsBefore = tasksApi.getBacklog.mock.calls.length;
+
+    // From here on the server reports the task as Done — what a sync that moved it looks
+    // like from the client's side.
+    tasksApi.getBacklog.mockReturnValue(of([doneTask]));
+
+    // Raised on the real modal through the template binding, not by calling the page's
+    // handler: the binding is the part that can go missing.
+    const modal = fixture.debugElement
+      .query((de) => de.componentInstance instanceof TaskDetailsModalComponent)!
+      .componentInstance as TaskDetailsModalComponent;
+
+    modal.tasksMoved.emit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(tasksApi.getBacklog.mock.calls.length).toBe(readsBefore + 1);
+
+    // The board reloading is only half of it: selectedTask still referenced the pre-reload
+    // object, so the modal the user is looking at kept showing the old status. It resets its
+    // form in ngOnChanges, which fires only when the reference changes.
+    expect(fixture.componentInstance.selectedTask()!.status).toBe('Done');
+  });
+
+  it('leaves the modal open while it refreshes', async () => {
+    const { fixture } = setup();
+
+    fixture.componentInstance.openTaskDetails(openTask as any);
+    fixture.detectChanges();
+
+    const modal = fixture.debugElement
+      .query((de) => de.componentInstance instanceof TaskDetailsModalComponent)!
+      .componentInstance as TaskDetailsModalComponent;
+
+    modal.tasksMoved.emit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Unlike `saved`, which the modal pairs with `closed`, this fires while the user is still
+    // reading the activity tab.
+    expect(fixture.componentInstance.showTaskDetails()).toBe(true);
+  });
+});
+
+describe('TasksPageComponent — GitHub refresh on load', () => {
+  it('re-reads the backlog on init when the refresh moved something', async () => {
+    // This test proves the binding from init all the way through to the re-read, by
+    // configuring the mock BEFORE setup runs with tasksTransitioned > 0.
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role: 'Company', companyId: 1, userId: 'u1' }),
+    );
+
+    const getBacklog = vi.fn().mockReturnValue(of([openTask]));
+    const tasksApi = {
+      getBacklog,
+      getBySprint: vi.fn().mockReturnValue(of([])),
+      getById: vi.fn().mockReturnValue(of(openTask)),
+    };
+
+    // Key: configure it to return tasksTransitioned > 0 BEFORE component creation.
+    const projectsApi = {
+      getById: vi.fn().mockReturnValue(of({ id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: true })),
+      getMembers: vi.fn().mockReturnValue(of([])),
+      refreshGitHub: vi.fn().mockReturnValue(of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 })),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [TasksPageComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: TasksApiService, useValue: tasksApi },
+        { provide: SprintsApiService, useValue: { getByProject: vi.fn().mockReturnValue(of([])) } },
+        { provide: AccountApiService, useValue: { getUsers: vi.fn().mockReturnValue(of([])) } },
+        { provide: ProjectsApiService, useValue: projectsApi },
+        { provide: ToastService, useValue: { show: vi.fn() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(new Map([['projectId', '7']]) as any),
+            queryParamMap: of(new Map() as any),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(TasksPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // After full init, refreshGitHub should have been called and triggered a re-read of the backlog
+    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
+    // getBacklog is called during reloadAll() and again during refreshTasks() when tasksTransitioned > 0
+    expect(getBacklog.mock.calls.length).toBe(2);
+  });
+
+  it('refreshes GitHub once when the project loads', async () => {
+    const { fixture, projectsApi } = setup();
+    await fixture.whenStable();
+
+    expect(projectsApi.refreshGitHub).toHaveBeenCalledWith(7);
+    expect(projectsApi.refreshGitHub.mock.calls.length).toBe(1);
+  });
+
+  it('re-reads the backlog when the refresh moved something', async () => {
+    const { fixture, tasksApi, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(
+      of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 2 }),
+    );
+
+    const readsBefore = tasksApi.getBacklog.mock.calls.length;
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+
+    expect(tasksApi.getBacklog.mock.calls.length).toBe(readsBefore + 1);
+  });
+
+  it('does not re-read when the refresh moved nothing', async () => {
+    const { fixture, tasksApi, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(
+      of({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0 }),
+    );
+
+    const readsBefore = tasksApi.getBacklog.mock.calls.length;
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+
+    expect(tasksApi.getBacklog.mock.calls.length).toBe(readsBefore);
+  });
+
+  it('says nothing when the refresh fails', async () => {
+    const { fixture, projectsApi } = setup();
+    projectsApi.refreshGitHub.mockReturnValue(throwError(() => ({ status: 500 })));
+
+    fixture.componentInstance.refreshGitHubActivity();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The user did not ask for this call. A banner about it reads as a broken board.
+    expect(fixture.componentInstance.error()).toBeNull();
+  });
+
+  afterEach(() => {
+    // The mounted activity panel issues its own read; drain it so it does not leak into the
+    // next test.
+    TestBed.inject(HttpTestingController).match(() => true).forEach((r) => r.flush({
+      commits: [], branches: [], pullRequests: [], lastSyncedAtUtc: null,
+    }));
+  });
+});
+
+// setup() writes a Company-role auth blob to localStorage; clear it after every test in this
+// file so it does not leak into later tests.
+afterEach(() => {
+  localStorage.removeItem('tasksphere_auth');
+});

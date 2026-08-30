@@ -43,6 +43,22 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
             _mapper.Map<List<GitHubRepositoryDto>>(repositories)));
     }
 
+    /// <summary>
+    /// Deliberately has NO cooldown, unlike <c>ProjectActivityRefreshService</c> and
+    /// <c>TaskActivityRefreshService</c>, which throttle per repository because they fire from
+    /// opening a page — an event the user does not think of as spending anything.
+    /// <para>
+    /// This one fires only after the user has personally been to github.com and come back, so it
+    /// is already rate-limited by the slowest thing in the loop: a human round-tripping through
+    /// another site. Adding a timer here would mostly serve to refuse the refresh at the one
+    /// moment it is certainly warranted — immediately after they granted access to a repository.
+    /// </para>
+    /// <para>
+    /// The cost accepted: up to <c>MaxPages</c> listing calls per invocation against the
+    /// installation's shared hourly budget. Revisit if this ever becomes reachable from a page
+    /// load rather than from a return trip.
+    /// </para>
+    /// </summary>
     public async Task<Result<GitHubConnectionDto>> RefreshRepositoriesAsync(
         Guid companyId, CancellationToken cancellationToken = default)
     {

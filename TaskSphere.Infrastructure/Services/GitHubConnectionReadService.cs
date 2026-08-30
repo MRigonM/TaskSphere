@@ -11,11 +11,13 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IGitHubRepositorySyncService _syncService;
 
-    public GitHubConnectionReadService(IUnitOfWork unitOfWork, IMapper mapper)
+    public GitHubConnectionReadService(IUnitOfWork unitOfWork, IMapper mapper, IGitHubRepositorySyncService syncService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _syncService = syncService;
     }
 
     public async Task<Result<GitHubConnectionDto>> GetConnectionAsync(Guid companyId, CancellationToken cancellationToken = default)
@@ -39,6 +41,24 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
         return Result<GitHubConnectionDto>.Success(new GitHubConnectionDto(
             _mapper.Map<GitHubInstallationDto>(installation),
             _mapper.Map<List<GitHubRepositoryDto>>(repositories)));
+    }
+
+    public async Task<Result<GitHubConnectionDto>> RefreshRepositoriesAsync(
+        Guid companyId, CancellationToken cancellationToken = default)
+    {
+        var installation = await _unitOfWork.GitHubInstallations.GetByCompanyAsync(companyId, cancellationToken);
+
+        if (installation is null)
+            return Result<GitHubConnectionDto>.Failure(EntityError.NotFound("GitHub connection"));
+
+        var sync = await _syncService.SyncAsync(installation, cancellationToken);
+
+        // Propagated rather than swallowed: falling through to GetConnectionAsync would answer
+        // a failed refresh with the stale list and no indication anything went wrong.
+        if (!sync.IsSuccess)
+            return Result<GitHubConnectionDto>.Failure(sync.Errors[0]);
+
+        return await GetConnectionAsync(companyId, cancellationToken);
     }
 
     public async Task<Result> DisconnectAsync(Guid companyId, CancellationToken cancellationToken = default)

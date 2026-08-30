@@ -55,10 +55,21 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
 
         // Propagated rather than swallowed: falling through to GetConnectionAsync would answer
         // a failed refresh with the stale list and no indication anything went wrong.
+        // The whole list, not Errors[0]: ApiBaseController.MapErrors scans every error to choose
+        // the status code, so keeping only the first can downgrade a 403 to a 400.
         if (!sync.IsSuccess)
-            return Result<GitHubConnectionDto>.Failure(sync.Errors[0]);
+            return Result<GitHubConnectionDto>.Failure([.. sync.Errors]);
 
-        return await GetConnectionAsync(companyId, cancellationToken);
+        var refreshed = await GetConnectionAsync(companyId, cancellationToken);
+
+        // GetConnectionAsync answers "not connected" as an empty SUCCESS, which is the opposite
+        // of this method's contract. The two disagree whenever the installation goes away while
+        // the sync is in flight — a disconnect in another tab during a round-trip to GitHub.
+        // Without this the caller is told, successfully, that it has no repositories.
+        if (refreshed.IsSuccess && refreshed.Value!.Installation is null)
+            return Result<GitHubConnectionDto>.Failure(EntityError.NotFound("GitHub connection"));
+
+        return refreshed;
     }
 
     public async Task<Result> DisconnectAsync(Guid companyId, CancellationToken cancellationToken = default)

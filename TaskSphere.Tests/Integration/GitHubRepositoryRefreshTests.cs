@@ -88,18 +88,31 @@ public class GitHubRepositoryRefreshTests : IAsyncLifetime
     private sealed class StubSyncService : IGitHubRepositorySyncService
     {
         private readonly Result<int> _result;
+        private readonly Func<GitHubInstallation, SystemTask.Task>? _sideEffect;
 
         public int Calls { get; private set; }
         public long? ReceivedInstallationId { get; private set; }
 
-        public StubSyncService(Result<int> result) => _result = result;
+        /// <param name="sideEffect">
+        /// What the real sync would do to the database before returning. Without one, a test
+        /// asserting the returned list cannot tell a refresh from a plain read.
+        /// </param>
+        public StubSyncService(Result<int> result, Func<GitHubInstallation, SystemTask.Task>? sideEffect = null)
+        {
+            _result = result;
+            _sideEffect = sideEffect;
+        }
 
-        public SystemTask.Task<Result<int>> SyncAsync(
+        public async SystemTask.Task<Result<int>> SyncAsync(
             GitHubInstallation installation, CancellationToken cancellationToken = default)
         {
             Calls++;
             ReceivedInstallationId = installation.InstallationId;
-            return SystemTask.Task.FromResult(_result);
+
+            if (_sideEffect is not null)
+                await _sideEffect(installation);
+
+            return _result;
         }
     }
 
@@ -126,6 +139,63 @@ public class GitHubRepositoryRefreshTests : IAsyncLifetime
         Assert.Equal("rigon-org", result.Value.Installation!.AccountLogin);
         Assert.Single(result.Value.Repositories);
         Assert.Equal("rigon-org/api", result.Value.Repositories[0].FullName);
+    }
+
+    [Fact]
+    public async SystemTask.Task Refresh_ReturnsRepositoriesTheSyncItselfWrote()
+    {
+        await using var db = NewContext();
+
+        // The decoy alone cannot witness a refresh: it is already there, so a method that
+        // skipped the sync entirely and just read would satisfy the assertion above. This one
+        // fails unless rows written during the sync are visible in the value that comes back.
+        var sync = new StubSyncService(Result<int>.Success(2), async installation =>
+        {
+            await using var syncDb = NewContext();
+            syncDb.GitHubRepositories.Add(new GitHubRepository
+            {
+                RepositoryId = 6002,
+                GitHubInstallationId = installation.Id,
+                CompanyId = installation.CompanyId,
+                FullName = "rigon-org/web",
+                DefaultBranch = "main",
+                IsPrivate = false,
+            });
+            await syncDb.SaveChangesAsync();
+        });
+
+        var service = NewService(db, sync);
+
+        var result = await service.RefreshRepositoriesAsync(_companyId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Repositories.Count);
+        Assert.Contains(result.Value.Repositories, r => r.FullName == "rigon-org/web");
+    }
+
+    [Fact]
+    public async SystemTask.Task Refresh_WhenTheInstallationDisappearsDuringTheSync_StillFails()
+    {
+        await using var db = NewContext();
+
+        // The disconnect-in-another-tab race. GetConnectionAsync answers "not connected" as an
+        // empty SUCCESS, so without an explicit guard this method would contract-breakingly
+        // report success and no repositories.
+        var sync = new StubSyncService(Result<int>.Success(0), async installation =>
+        {
+            await using var otherTab = NewContext();
+            var row = await otherTab.GitHubInstallations.FirstAsync(i => i.Id == installation.Id);
+            row.IsDeleted = true;
+            row.DeletedAt = DateTime.UtcNow;
+            await otherTab.SaveChangesAsync();
+        });
+
+        var service = NewService(db, sync);
+
+        var result = await service.RefreshRepositoriesAsync(_companyId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(1, sync.Calls);
     }
 
     [Fact]

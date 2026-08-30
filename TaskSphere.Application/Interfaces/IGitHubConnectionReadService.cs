@@ -11,7 +11,7 @@ public interface IGitHubConnectionReadService
     /// Re-reads the installation's repository list from GitHub on demand and returns the
     /// refreshed connection. Unlike the install callback this establishes nothing: the
     /// installation is resolved from <paramref name="companyId"/>, so no caller-supplied
-    /// installation id is trusted and the §0l verification chain does not apply.
+    /// installation id is trusted.
     /// <para>
     /// A company with no live installation is a failure, not an empty success — an empty
     /// success renders as "no repositories", which is a different claim.

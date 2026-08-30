@@ -68,7 +68,7 @@ public class GitHubLinkAndConnectionTests : IAsyncLifetime
     {
         public SystemTask.Task<Result<int>> SyncAsync(
             GitHubInstallation installation, CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException(
+            => throw new NotSupportedException(
                 "GitHubLinkAndConnectionTests must never reach the repository sync.");
     }
 

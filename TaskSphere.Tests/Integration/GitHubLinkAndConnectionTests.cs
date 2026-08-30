@@ -2,6 +2,7 @@ using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Application.Mappings;
+using TaskSphere.Domain.Common;
 using TaskSphere.Domain.Enums;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
@@ -59,8 +60,20 @@ public class GitHubLinkAndConnectionTests : IAsyncLifetime
     private static GitHubProjectLinkService NewLinkService(ApplicationDbContext db)
         => new GitHubProjectLinkService(new UnitOfWork(db), new AccessControlService(db), Mapper);
 
+    /// <summary>
+    /// Throws rather than stubs: nothing this class exercises may reach GitHub. A working stub
+    /// would let a future change start syncing here and never say so.
+    /// </summary>
+    private sealed class UnreachableSyncService : IGitHubRepositorySyncService
+    {
+        public SystemTask.Task<Result<int>> SyncAsync(
+            GitHubInstallation installation, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException(
+                "GitHubLinkAndConnectionTests must never reach the repository sync.");
+    }
+
     private static GitHubConnectionReadService NewReadService(ApplicationDbContext db)
-        => new GitHubConnectionReadService(new UnitOfWork(db), Mapper);
+        => new GitHubConnectionReadService(new UnitOfWork(db), Mapper, new UnreachableSyncService());
 
     public async SystemTask.Task InitializeAsync()
     {

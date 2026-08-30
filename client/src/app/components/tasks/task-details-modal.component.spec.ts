@@ -36,6 +36,16 @@ const emptyActivity: TaskGitHubActivityDto = {
   lastSyncedAtUtc: null,
 };
 
+/** Answers the refresh-on-open POST that now precedes every read of the activity panel. */
+function flushRefresh(http: HttpTestingController, taskId: number) {
+  http.expectOne(`${environment.apiUrl}Tasks/${taskId}/github-refresh`).flush({
+    refreshed: true,
+    repositoriesRefreshed: 0,
+    tasksTransitioned: 0,
+    lastSyncedAtUtc: null,
+  });
+}
+
 async function setup(payload: TaskGitHubActivityDto = activity) {
   localStorage.setItem(
     'tasksphere_auth',
@@ -55,6 +65,8 @@ async function setup(payload: TaskGitHubActivityDto = activity) {
   fixture.componentRef.setInput('sprints', []);
   fixture.detectChanges();
 
+  // Opening the modal (on Details) reads the activity for the count badge but does not refresh
+  // it — the refresh is gated behind the Activity tab actually being the one showing.
   http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(payload);
   await fixture.whenStable();
   fixture.detectChanges();
@@ -97,23 +109,39 @@ describe('TaskDetailsModalComponent tabs', () => {
     expect(tab(fixture, 'activity').querySelector('[data-count]')).toBeNull();
   });
 
-  it('switches to the Activity tab without re-requesting', async () => {
-    const { fixture } = await setup();
+  it('refreshes then re-reads when the Activity tab is opened, and does not refresh again on a second visit', async () => {
+    const { fixture, http } = await setup();
 
     tab(fixture, 'activity').click();
     fixture.detectChanges();
 
+    flushRefresh(http, 42);
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(activity);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
     expect(fixture.componentInstance.activeTab()).toBe('activity');
     expect(fixture.nativeElement.textContent).toContain('TS-42-fix');
-    // verify() in afterEach fails if switching tabs fired a second read.
+
+    tab(fixture, 'details').click();
+    fixture.detectChanges();
+    tab(fixture, 'activity').click();
+    fixture.detectChanges();
+
+    // verify() in afterEach fails if revisiting the tab fired a second refresh.
   });
 
   it('keeps the form mounted while the Activity tab is open, so edits survive a tab switch', async () => {
-    const { fixture } = await setup();
+    const { fixture, http } = await setup();
 
     fixture.componentInstance.form.patchValue({ title: 'Edited but not saved' });
 
     tab(fixture, 'activity').click();
+    fixture.detectChanges();
+
+    flushRefresh(http, 42);
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(activity);
+    await fixture.whenStable();
     fixture.detectChanges();
 
     // The value alone does not prove this: a FormGroup lives on the component and survives its
@@ -138,10 +166,17 @@ describe('TaskDetailsModalComponent tabs', () => {
 
     tab(fixture, 'activity').click();
     fixture.detectChanges();
+    flushRefresh(http, 42);
+    http.expectOne(`${environment.apiUrl}Tasks/42/github-activity`).flush(activity);
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     fixture.componentRef.setInput('task', { id: 43, key: 'TS-43', title: 'Other', status: 'Open' });
     fixture.detectChanges();
 
+    // The tab resets to Details in the same change that swaps the task, so the read-only load
+    // fires for task 43's badge but no refresh goes with it — the Activity tab has not been
+    // reopened for this task yet.
     http.expectOne(`${environment.apiUrl}Tasks/43/github-activity`).flush(emptyActivity);
     await fixture.whenStable();
     fixture.detectChanges();

@@ -124,6 +124,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         private readonly List<(string Match, string Body, string? LinkHeader)> _responses = new();
         private readonly Dictionary<string, Error> _failures = new(StringComparer.Ordinal);
+        private readonly List<string> _throwOn = new();
 
         public List<string> RequestedUrls { get; } = new();
 
@@ -147,10 +148,26 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             return this;
         }
 
+        /// <summary>
+        /// Simulates a genuine exception mid-pass — e.g. GitHubCommitMirror's check-then-insert
+        /// colliding with a concurrent pass over the same repository on the unique
+        /// (GitHubRepositoryId, Sha) index — rather than the ordinary GitHub-returned-an-error
+        /// shape that <see cref="Fail"/> models.
+        /// </summary>
+        public FakeApiClient ThrowOn(string urlContains)
+        {
+            _throwOn.Add(urlContains);
+            return this;
+        }
+
         public Task<Result<GitHubResponse>> GetAsync(long installationId, string url, CancellationToken cancellationToken = default)
         {
             RequestedUrls.Add(url);
             RequestedInstallationIds.Add(installationId);
+
+            foreach (var match in _throwOn)
+                if (url.Contains(match, StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Simulated collision fetching {url}.");
 
             foreach (var (match, error) in _failures)
                 if (url.Contains(match, StringComparison.Ordinal))
@@ -212,8 +229,9 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var transitions = new MergeTransitionService(uow, new AuditQueue());
         var pullMirror = new GitHubPullRequestMirror(api, uow);
         var branchMirror = new GitHubBranchMirror(api, uow);
+        var commitMirror = new GitHubCommitMirror(api, uow);
 
-        return await new GitHubActivitySyncService(api, uow, resolver, transitions, pullMirror, branchMirror)
+        return await new GitHubActivitySyncService(api, uow, resolver, transitions, pullMirror, branchMirror, commitMirror)
             .SyncCompanyAsync(_companyId, "rigon");
     }
 
@@ -1110,6 +1128,115 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async SystemTask.Task ASuccessfulSync_StampsBothRepositoryPasses()
+    {
+        // Task 6 removed ActivitySyncedAtUtc from the read side, so a repository stamp is the
+        // only thing that can make a task panel show "Last synced" after a company-wide sync —
+        // and the only thing that buys the sync any cooldown against the very next task open.
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")))
+            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        var before = DateTime.UtcNow;
+        await Sync(api);
+
+        await using var db = NewContext();
+        var repository = await db.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+
+        Assert.NotNull(repository.CommitsRefreshedAtUtc);
+        Assert.True(repository.CommitsRefreshedAtUtc >= before);
+        Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+        Assert.True(repository.PullRequestsRefreshedAtUtc >= before);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingCommitsPass_LeavesTheCommitsStampAlone_ButStillStampsPulls()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .Fail("/commits", new Error("GitHub.RateLimited", "Rate limit exceeded."))
+            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, "2026-08-11T10:00:00Z")));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        var repository = await db.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+
+        // The commits pass failed on its one branch, so its stamp must not move — the same guard
+        // the task-triggered refresh uses. The pull pass succeeded independently, so its stamp does.
+        Assert.Null(repository.CommitsRefreshedAtUtc);
+        Assert.NotNull(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingPullsPass_LeavesThePullsStampAlone_ButStillStampsCommits()
+    {
+        var api = new FakeApiClient()
+            .On("/branches", Branches(("main", "aaa")))
+            .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")))
+            .Fail("/pulls", new Error("GitHub.RateLimited", "Rate limit exceeded."));
+
+        await Sync(api);
+
+        await using var db = NewContext();
+        var repository = await db.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+
+        Assert.NotNull(repository.CommitsRefreshedAtUtc);
+        Assert.Null(repository.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task ARepositoryThatThrowsMidPass_DoesNotAbortTheRestOfTheRun()
+    {
+        // Models GitHubCommitMirror's check-then-insert colliding with a concurrent pass over the
+        // same repository (the unique, unfiltered index on (GitHubRepositoryId, Sha)) — a real
+        // exception, not the ordinary GitHub-returned-an-error shape. Before this fix the loop had
+        // no try/catch, so this would abort every remaining repository and skip the sync stamp.
+        await using (var db = NewContext())
+        {
+            db.ProjectRepositoryLinks.Add(new ProjectRepositoryLink
+            {
+                ProjectId = _projectId,
+                GitHubRepositoryId = _webRepositoryId,
+                CompanyId = _companyId,
+                LinkedByUserId = "rigon",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Repositories are processed in full-name order, so "rigon-org/api" is stamped FIRST and
+        // "rigon-org/web" throws SECOND. This ordering is deliberate: DiscardPendingChanges()
+        // detaches every Added/Modified/Deleted entry tracked by the context, not just the
+        // failing repository's, so it only proves anything when an earlier repository's stamps
+        // are still pending at the moment a later one throws. Making the FIRST repository the
+        // one that throws (as an earlier version of this test did) leaves nothing pending at
+        // discard time and cannot catch the hole this test exists for.
+        var api = new FakeApiClient()
+            .On("/repos/rigon-org/api/branches", Branches(("main", "aaa")))
+            .ThrowOn("/repos/rigon-org/web/branches");
+
+        var result = await Sync(api);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.RepositoriesSynced);
+        // Not reported as a failure — failure-reporting for this collision is deferred to its own
+        // slice; this fix is scoped to the loop surviving it.
+        Assert.DoesNotContain(result.Value.Failures, f => f.RepositoryFullName == "rigon-org/web");
+
+        await using var db2 = NewContext();
+        Assert.NotNull((await db2.GitHubInstallations.SingleAsync()).ActivitySyncedAtUtc);
+
+        // The repository processed BEFORE the one that threw. Its stamps must have been saved
+        // durably before the throwing repository's discard could reach them — otherwise a
+        // collision on one repository silently erases every earlier repository's freshness
+        // stamps in the same run, even though their commits and branches are already persisted.
+        var apiRepo = await db2.GitHubRepositories.SingleAsync(r => r.Id == _apiRepositoryId);
+        Assert.NotNull(apiRepo.CommitsRefreshedAtUtc);
+        Assert.NotNull(apiRepo.PullRequestsRefreshedAtUtc);
+    }
+
+    [Fact]
     public async SystemTask.Task RepositoriesAreTakenInFullNameOrder()
     {
         // Inserted last, so its row id is the highest and storage order and name order
@@ -1753,5 +1880,21 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // join rows would leave run 1's link in place and this test green while the decision it
         // is named for had been reversed underneath it.
         Assert.Single(await final.GitHubBranchCommits.ToListAsync());
+    }
+
+    [Fact]
+    public void TheCommitsPass_LivesInTheMirror_NotInTheSyncService()
+    {
+        var syncSource = File.ReadAllText(
+            "../../../../TaskSphere.Infrastructure/Services/GitHubActivitySyncService.cs");
+        var mirrorSource = File.ReadAllText(
+            "../../../../TaskSphere.Infrastructure/Services/GitHubCommitMirror.cs");
+
+        // The commits listing URL is the pass's fingerprint. Two copies means the guards can drift.
+        Assert.DoesNotContain("/commits?sha=", syncSource);
+        Assert.Contains("/commits?sha=", mirrorSource);
+
+        // The truncation guard added on 2026-08-28 must have travelled with it.
+        Assert.Contains("rel=\\\"next\\\"", mirrorSource);
     }
 }

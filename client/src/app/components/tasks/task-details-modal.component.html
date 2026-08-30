@@ -154,10 +154,13 @@
 
     <!-- Mounted, not conditional: the child owns the count, so the badge needs the panel to
          have loaded before anyone opens the tab. `#activity` is what feeds it — no second
-         endpoint and no duplicate state on the modal. -->
+         endpoint and no duplicate state on the modal. `[active]` is separate from `[hidden]`:
+         it tells the child when the (expensive, company-shared) GitHub refresh may run, so
+         mounting on Details never fires it — only actually opening the tab does. -->
     <app-task-github-activity
       #activity
       [taskId]="task.id"
+      [active]="activeTab() === 'activity'"
       [hidden]="activeTab() !== 'activity'"
       (tasksMoved)="tasksMoved.emit()"
     ></app-task-github-activity>

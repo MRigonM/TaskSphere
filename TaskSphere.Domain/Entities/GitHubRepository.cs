@@ -17,4 +17,12 @@ public class GitHubRepository : BaseEntity<int>
     /// The repository upsert must leave this field alone.
     /// </summary>
     public DateTime? PullRequestsRefreshedAtUtc { get; set; }
+
+    /// <summary>
+    /// TaskSphere's own column, not GitHub's — when a task-scoped refresh last pulled this
+    /// repository's commits. A separate stamp from PullRequestsRefreshedAtUtc because the commits
+    /// pass costs one listing per branch and carries a much longer cooldown.
+    /// The repository upsert must leave this field alone.
+    /// </summary>
+    public DateTime? CommitsRefreshedAtUtc { get; set; }
 }

@@ -145,4 +145,15 @@ describe('GitHubActivityService', () => {
 
     expect(received?.alreadyExisted).toBe(false);
   });
+
+  it('posts to the task-scoped refresh endpoint', () => {
+    const { service, http } = setup();
+
+    service.refreshForTask(42).subscribe();
+
+    const req = http.expectOne(`${environment.apiUrl}Tasks/42/github-refresh`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBeNull();
+    req.flush({ refreshed: true, repositoriesRefreshed: 1, tasksTransitioned: 0, lastSyncedAtUtc: null });
+  });
 });

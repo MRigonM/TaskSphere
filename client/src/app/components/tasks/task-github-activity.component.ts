@@ -15,7 +15,9 @@ import { CreateBranchDialogComponent } from './create-branch-dialog.component';
 /**
  * A task's GitHub activity, read from the mirror. It owns its own load and stays mounted
  * behind `[hidden]` in the modal rather than `*ngIf`, so the count is on the tab before the
- * tab is clicked — one request per modal open, no separate count endpoint.
+ * tab is clicked — one read per modal open, no separate count endpoint. The GitHub refresh
+ * (expensive, company-shared) is gated behind `active` and fires only once the Activity tab
+ * is the one actually showing — see `ngOnChanges`.
  *
  * It deliberately does NOT branch on whether the company is connected to GitHub:
  * `GET api/GitHub/connection` sits on the Company-gated controller, so a `User`-role member
@@ -30,6 +32,17 @@ import { CreateBranchDialogComponent } from './create-branch-dialog.component';
 })
 export class TaskGitHubActivityComponent implements OnChanges {
   @Input({ required: true }) taskId!: number;
+
+  /**
+   * True only while the Activity tab itself is showing. The component stays mounted behind
+   * `[hidden]` for the count badge (see the modal's template comment), but the GitHub refresh
+   * is expensive and company-shared, so it must wait for someone to actually look — see
+   * `ngOnChanges` below.
+   */
+  @Input() active = false;
+
+  /** Reset whenever `taskId` changes; guards against re-refreshing on every tab re-visit. */
+  private hasRefreshedForTask = false;
 
   private activityApi = inject(GitHubActivityService);
   private auth = inject(AuthStoreService);
@@ -68,17 +81,55 @@ export class TaskGitHubActivityComponent implements OnChanges {
   isEmpty = computed(() => this.data() !== null && this.count() === 0);
 
   ngOnChanges(changes: SimpleChanges) {
-    if (!changes['taskId']?.currentValue) return;
+    const taskChanged = !!changes['taskId']?.currentValue;
 
-    // Back to unknown before reading a different task. `load()` deliberately leaves `data`
-    // alone when a read fails, which is right for a retry of the same task and wrong across
-    // a task change — without this, task 42's commits stay on screen under an error about 43.
-    this.data.set(null);
-    this.load();
+    if (taskChanged) {
+      // Back to unknown before reading a different task. `load()` deliberately leaves `data`
+      // alone when a read fails, which is right for a retry of the same task and wrong across
+      // a task change — without this, task 42's commits stay on screen under an error about 43.
+      this.data.set(null);
+      this.hasRefreshedForTask = false;
+    }
+
+    // Mounting (or a task change) is a read, not a refresh — the count badge needs only the
+    // mirror's current contents. The GitHub refresh fires once per task, on the first moment
+    // the Activity tab is actually the one showing, and not again just from leaving and
+    // returning to it. `refreshThenLoad` already ends with a read, so it replaces rather than
+    // follows the plain load below — otherwise mounting straight onto an already-active tab
+    // would fire two reads back to back.
+    if (this.active && !this.hasRefreshedForTask) {
+      this.hasRefreshedForTask = true;
+      this.refreshThenLoad();
+      return;
+    }
+
+    if (taskChanged)
+      this.load();
   }
 
   retry() {
     this.load();
+  }
+
+  /**
+   * The refresh is best-effort: its failure must not stop the read, because the mirror still
+   * holds whatever the last successful sync wrote, and showing that beats showing an error over
+   * data that exists.
+   */
+  private refreshThenLoad() {
+    this.loading.set(true);
+    this.error.set(null);
+
+    this.activityApi
+      .refreshForTask(this.taskId)
+      .pipe(
+        tap(result => {
+          if (result.tasksTransitioned > 0)
+            this.tasksMoved.emit();
+        }),
+        catchError(() => of(null))
+      )
+      .subscribe(() => this.load());
   }
 
   load() {

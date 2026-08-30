@@ -134,9 +134,9 @@ public class GitHubRepositorySyncService : IGitHubRepositorySyncService
         existing.FullName = payload.FullName ?? "";
         existing.DefaultBranch = payload.DefaultBranch ?? "";
         existing.IsPrivate = payload.Private;
-        // PullRequestsRefreshedAtUtc is deliberately NOT overwritten: it is
-        // TaskSphere's own cooldown stamp, not a GitHub-sourced field, and clearing it
-        // here would make every repository sync reset every cooldown.
+        // PullRequestsRefreshedAtUtc and CommitsRefreshedAtUtc are deliberately NOT overwritten:
+        // they are TaskSphere's own cooldown stamps, not GitHub-sourced fields, and clearing
+        // them here would make every repository sync reset every cooldown.
         existing.IsDeleted = false;
         existing.DeletedAt = null;
 

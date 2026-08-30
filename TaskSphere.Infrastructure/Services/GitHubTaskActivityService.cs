@@ -34,15 +34,8 @@ public class GitHubTaskActivityService : IGitHubTaskActivityService
         if (task is null)
             return Result<TaskGitHubActivityDto>.Failure(EntityError.NotFound(taskId));
 
-        var installation = await _unitOfWork.GitHubInstallations.GetByCompanyAsync(companyId, cancellationToken);
-        var lastSynced = installation?.ActivitySyncedAtUtc;
-
-        var links = await _unitOfWork.TaskLinks
-            .GetByTask(companyId, taskId)
-            .ToListAsync(cancellationToken);
-
-        if (links.Count == 0 || task.ProjectId is null)
-            return Empty(lastSynced);
+        if (task.ProjectId is null)
+            return Empty(null);
 
         // The authorization re-check. A link row survives an unlink, so the read is what
         // decides whether it still grants anything — no cleanup job, no stale grants.
@@ -53,14 +46,30 @@ public class GitHubTaskActivityService : IGitHubTaskActivityService
             .ToHashSet();
 
         if (authorizedRepositoryIds.Count == 0)
-            return Empty(lastSynced);
+            return Empty(null);
 
+        // One query carries both what this method needs (names, for repositoryNames below) and
+        // what the freshness label needs (the two refresh-stamp columns) — a second round trip
+        // for the same rows would be wasteful. LastStamp is the same rule
+        // TaskActivityRefreshService.RefreshAsync uses to populate TaskActivityRefreshDto.LastSyncedAtUtc;
+        // the two must never disagree.
+        //
         // Filtered, so a soft-deleted repository drops its records the same way a link to one
         // is dropped from the links screen.
-        var repositoryNames = await _unitOfWork.GitHubRepositories
+        var authorizedRepositories = await _unitOfWork.GitHubRepositories
             .GetByCompany(companyId)
             .Where(r => authorizedRepositoryIds.Contains(r.Id))
-            .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        var lastSynced = TaskActivityRefreshService.LastStamp(authorizedRepositories);
+        var repositoryNames = authorizedRepositories.ToDictionary(r => r.Id, r => r.FullName);
+
+        var links = await _unitOfWork.TaskLinks
+            .GetByTask(companyId, taskId)
+            .ToListAsync(cancellationToken);
+
+        if (links.Count == 0)
+            return Empty(lastSynced);
 
         var commitIds = links.Where(l => l.GitHubCommitId is not null).Select(l => l.GitHubCommitId!.Value).ToList();
         var branchIds = links.Where(l => l.GitHubBranchId is not null).Select(l => l.GitHubBranchId!.Value).ToList();

@@ -75,6 +75,19 @@ public class GitHubController : ApiBaseController
         return FromResult(result);
     }
 
+    /// <summary>
+    /// Re-reads the installation's repositories from GitHub on demand. Company-only, because it
+    /// is company-wide rate-limit spend. Takes nothing from the caller: the installation is
+    /// resolved from the authenticated company, so there is no untrusted id to verify.
+    /// Not audited — see GitHubRepositorySyncEndpointTests.
+    /// </summary>
+    [HttpPost("repositories/sync")]
+    public async Task<IActionResult> RefreshRepositories(CancellationToken ct)
+    {
+        var result = await _readService.RefreshRepositoriesAsync(CompanyId, ct);
+        return FromResult(result);
+    }
+
     [Audit("Linked a repository to a project")]
     [HttpPost("projects/{projectId:int}/repositories")]
     public async Task<IActionResult> Link(int projectId, [FromBody] LinkRepositoryDto dto, CancellationToken ct)

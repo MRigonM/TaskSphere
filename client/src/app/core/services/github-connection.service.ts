@@ -50,6 +50,19 @@ export class GitHubConnectionService {
       .pipe(tap(c => this._connection.set(c)));
   }
 
+  /**
+   * Re-reads the installation's repositories from GitHub. Sends no body — the server resolves
+   * the installation from the authenticated company, so there is nothing to name.
+   * On failure the stored connection is deliberately left as it was: the repositories that were
+   * already loaded are still real, and blanking them would turn a refresh failure into an
+   * apparent loss of data.
+   */
+  refreshRepositories(): Observable<GitHubConnectionDto> {
+    return this.http
+      .post<GitHubConnectionDto>(`${this.base}/repositories/sync`, {})
+      .pipe(tap(c => this._connection.set(c)));
+  }
+
   /** Seam for the top-level navigation to github.com, so tests can assert it without navigating. */
   redirectTo(url: string) {
     window.location.href = url;

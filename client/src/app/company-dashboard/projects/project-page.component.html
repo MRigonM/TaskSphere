@@ -136,6 +136,17 @@
         </select>
       </div>
 
+      <div *ngIf="auth.isCompany() && manageUrl()" class="mt-3 text-sm">
+        <span class="text-slate-400">Don't see your repository? </span>
+        <button
+          class="text-sky-300 underline hover:text-sky-200"
+          (click)="openGitHubSettings()"
+          type="button"
+        >
+          Manage repository access on GitHub ↗
+        </button>
+      </div>
+
       <div
         *ngIf="repos.unavailableCount > 0"
         data-testid="unavailable-count"

@@ -1,10 +1,13 @@
 ﻿import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { of } from 'rxjs';
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 
+import { GitHubReturnSyncService } from '../../core/github/github-return-sync.service';
+import { manageInstallationUrl } from '../../core/github/manage-installation-url';
 import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
@@ -38,6 +41,8 @@ export class ProjectPageComponent {
   auth = inject(AuthStoreService);
   private linkService = inject(GitHubProjectLinkService);
   private github = inject(GitHubConnectionService);
+  private returnSync = inject(GitHubReturnSyncService);
+  private destroyRef = inject(DestroyRef);
 
   /** null means unknown — not read yet, or the read failed. Never "nothing is linked". */
   repositories = signal<ProjectRepositoriesDto | null>(null);
@@ -51,6 +56,9 @@ export class ProjectPageComponent {
     const linked = new Set((this.repositories()?.links ?? []).map(l => l.gitHubRepositoryId));
     return (this.connection()?.repositories ?? []).filter(r => !linked.has(r.id));
   });
+
+  /** null when there is nothing to do on GitHub — not connected, or access is already "all". */
+  manageUrl = computed(() => manageInstallationUrl(this.connection()?.installation ?? null));
 
   constructor(
     private route: ActivatedRoute,
@@ -80,6 +88,34 @@ export class ProjectPageComponent {
       this.loadRepositories();
       this.loadConnectionIfAdmin();
     });
+
+    // Outside the paramMap callback on purpose: paramMap emits again on an in-place navigation,
+    // and one subscription per emission would multiply the sync. takeUntilDestroyed is not a
+    // precaution either — returned$ never completes, so a destroyed page would keep syncing.
+    this.returnSync.returned$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.github
+        .refreshRepositories()
+        .pipe(
+          tap(() => this.loadRepositories()),
+          catchError(err => {
+            this.repositoriesError.set(apiErrorMessage(err, 'Failed to refresh the repositories.'));
+            return of(null);
+          }),
+        )
+        .subscribe();
+    });
+  }
+
+  /**
+   * Opens the installation's own settings in a new tab. A new tab rather than a navigation: the
+   * return is detected by this document regaining visibility, which only works if it survives.
+   */
+  openGitHubSettings() {
+    const url = this.manageUrl();
+    if (!url) return;
+
+    this.returnSync.arm();
+    window.open(url, '_blank');
   }
 
   loadRepositories() {

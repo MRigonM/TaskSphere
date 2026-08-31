@@ -171,11 +171,17 @@ describe('ProjectPageComponent — the auto-done toggle', () => {
   });
 });
 
+function becomeVisible() {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 describe('ProjectPageComponent — the repositories section', () => {
   afterEach(() => {
     // AuthStoreService reads this at construction, so a leaked role would silently change the
     // role every later test in this run believes it is running as.
     localStorage.removeItem('tasksphere_auth');
+    vi.restoreAllMocks();
   });
 
   it('lists the repositories linked to the project', () => {
@@ -284,6 +290,87 @@ describe('ProjectPageComponent — the repositories section', () => {
     expect(fixture.componentInstance.repositoriesError()).toContain('could not be removed');
     // The row is still there: nothing was removed, and hiding it would claim otherwise.
     expect(fixture.nativeElement.textContent).toContain('acme-corp/api');
+    http.verify();
+  });
+
+  it('offers the GitHub link when the installation has only selected repositories', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0); // RepositorySelection.Selected
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.manageUrl()).toBe(
+      'https://github.com/organizations/acme-corp/settings/installations/42',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Manage repository access on GitHub');
+  });
+
+  it('offers no GitHub link when the installation already has every repository', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 1); // RepositorySelection.All
+    fixture.detectChanges();
+
+    // Nothing to grant over there — the list only needs refreshing.
+    expect(fixture.componentInstance.manageUrl()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Manage repository access on GitHub');
+  });
+
+  it('re-syncs the repositories once when the user returns from GitHub', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+
+    becomeVisible();
+
+    http.expectOne(`${environment.apiUrl}GitHub/repositories/sync`).flush({
+      installation: null,
+      repositories: [],
+    });
+    // The project's own links are re-read too: a newly granted repository is linkable, but the
+    // linked list is what the section renders.
+    flushProjectRepositories(http);
+    http.verify();
+  });
+
+  it('stops listening for the return once the page is destroyed', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+    fixture.destroy();
+
+    becomeVisible();
+
+    // returned$ never completes, so without takeUntilDestroyed a navigated-away page keeps
+    // syncing — and keeps winning the arm from whatever page the user is actually on.
+    http.expectNone(`${environment.apiUrl}GitHub/repositories/sync`);
+    http.verify();
+  });
+
+  it('does not sync on a refocus the user never armed', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    // An ordinary alt-tab back to the app. Spending a GitHub call here is exactly what the arm
+    // exists to prevent.
+    becomeVisible();
+
+    http.expectNone(`${environment.apiUrl}GitHub/repositories/sync`);
     http.verify();
   });
 });

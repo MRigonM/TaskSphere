@@ -155,6 +155,9 @@ export class ProjectPageComponent {
   linkRepository(repositoryId: number) {
     const id = this.projectId();
     if (id === null) return;
+    // The picker's placeholder has value "", which the template coerces to 0. Choosing it is not
+    // a request to link anything, and posting it could only ever fail.
+    if (!repositoryId) return;
 
     this.linking.set(true);
     this.repositoriesError.set(null);

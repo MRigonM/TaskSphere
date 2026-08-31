@@ -293,6 +293,26 @@ describe('ProjectPageComponent — the repositories section', () => {
     http.verify();
   });
 
+  it('does not post a link when the placeholder option is chosen', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0, [
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    // The placeholder's value is '', which the template coerces to 0. Reachable after a failed
+    // link, where the selection deliberately stays put: re-picking "Link a repository…" would
+    // otherwise POST repositoryId 0 and report a second failure for a link nobody asked for.
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select[data-testid="link-repository"]');
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+
+    http.expectNone(`${environment.apiUrl}GitHub/projects/7/repositories`);
+    http.verify();
+  });
+
   it('offers the GitHub link when the installation has only selected repositories', () => {
     const { fixture, http } = setup(project, 'Company');
 

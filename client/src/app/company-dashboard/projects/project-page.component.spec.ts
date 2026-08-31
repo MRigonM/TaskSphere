@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
@@ -9,12 +9,25 @@ import { ProjectPageComponent } from './project-page.component';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { ToastService } from '../../core/services/toast.service';
+import { environment } from '../../../environments/environment';
 import { ProjectDto } from '../../core/models/projects.models';
 
 const project: ProjectDto = { id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: false };
 
-function setup(current: ProjectDto = project) {
+/**
+ * `role` seeds the auth store the way the links screen's spec does — `AuthStoreService` reads
+ * localStorage at construction, so it has to be written before the TestBed builds the component.
+ * Left null the component renders as a signed-out page would: no admin-only reads at all.
+ */
+function setup(current: ProjectDto = project, role: 'Company' | 'User' | null = null) {
   const toast = { show: vi.fn() };
+
+  if (role) {
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role, companyId: 1, userId: 'u1' }),
+    );
+  }
 
   const projectsApi = {
     getAll: vi.fn().mockReturnValue(of([current])),
@@ -37,11 +50,20 @@ function setup(current: ProjectDto = project) {
     ],
   });
 
+  const http = TestBed.inject(HttpTestingController);
+
   const fixture: ComponentFixture<ProjectPageComponent> =
     TestBed.createComponent(ProjectPageComponent);
   fixture.detectChanges();
 
-  return { fixture, projectsApi, toast };
+  return { fixture, projectsApi, toast, http };
+}
+
+function flushProjectRepositories(
+  http: HttpTestingController,
+  body: { links: unknown[]; unavailableCount: number } = { links: [], unavailableCount: 0 },
+) {
+  http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush(body);
 }
 
 function checkbox(fixture: ComponentFixture<ProjectPageComponent>): HTMLInputElement {
@@ -128,5 +150,39 @@ describe('ProjectPageComponent — the auto-done toggle', () => {
       'Merged pull requests will no longer move their task',
       'info',
     );
+  });
+});
+
+describe('ProjectPageComponent — the repositories section', () => {
+  afterEach(() => {
+    // AuthStoreService reads this at construction, so a leaked role would silently change the
+    // role every later test in this run believes it is running as.
+    localStorage.removeItem('tasksphere_auth');
+  });
+
+  it('lists the repositories linked to the project', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/api');
+  });
+
+  it('reports links whose repository is no longer available', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, { links: [], unavailableCount: 2 });
+    fixture.detectChanges();
+
+    // The count is the only thing the server can say about them, and saying nothing would make
+    // a link silently vanish.
+    const notice: HTMLElement = fixture.nativeElement.querySelector('[data-testid="unavailable-count"]');
+    expect(notice?.textContent).toContain('2');
   });
 });

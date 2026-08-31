@@ -95,4 +95,31 @@
   <div *ngIf="members().length === 0 && !loading()" class="text-slate-400">
     No members yet.
   </div>
+
+  <div class="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div class="mb-2 text-sm font-semibold text-white">Repositories</div>
+
+    <div *ngIf="repositoriesError()" class="mb-3 text-sm text-red-200">
+      {{ repositoriesError() }}
+    </div>
+
+    <div *ngIf="repositories() as repos">
+      <div *ngFor="let link of repos.links" class="flex items-center justify-between py-2">
+        <div class="font-mono text-sm text-white">{{ link.fullName }}</div>
+      </div>
+
+      <div *ngIf="repos.links.length === 0" class="text-slate-400">
+        No repositories linked yet.
+      </div>
+
+      <div
+        *ngIf="repos.unavailableCount > 0"
+        data-testid="unavailable-count"
+        class="mt-2 text-xs text-amber-300"
+      >
+        {{ repos.unavailableCount }} linked repository(s) are no longer available to the
+        installation.
+      </div>
+    </div>
+  </div>
 </div>

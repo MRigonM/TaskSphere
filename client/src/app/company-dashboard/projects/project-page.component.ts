@@ -1,5 +1,5 @@
 ﻿import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { of } from 'rxjs';
@@ -8,9 +8,12 @@ import { catchError, finalize, switchMap, tap } from 'rxjs/operators';
 import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
+import { AuthStoreService } from '../../core/services/auth-store.service';
+import { GitHubProjectLinkService } from '../../core/services/github-project-link.service';
 import { ToastService } from '../../core/services/toast.service';
 
 import { UserDto, UserQueryDto } from '../../core/models/account.models';
+import { ProjectRepositoriesDto } from '../../core/models/github.models';
 import { AddMemberDto, MemberDto, ProjectDto } from '../../core/models/projects.models';
 
 @Component({
@@ -30,6 +33,13 @@ export class ProjectPageComponent {
   users = signal<UserDto[]>([]);
   members = signal<MemberDto[]>([]);
   selectedUserId = '';
+
+  auth = inject(AuthStoreService);
+  private linkService = inject(GitHubProjectLinkService);
+
+  /** null means unknown — not read yet, or the read failed. Never "nothing is linked". */
+  repositories = signal<ProjectRepositoriesDto | null>(null);
+  repositoriesError = signal<string | null>(null);
 
   constructor(
     private route: ActivatedRoute,
@@ -56,7 +66,24 @@ export class ProjectPageComponent {
 
       this.loadProjectName();
       this.loadUsersAndMembers();
+      this.loadRepositories();
     });
+  }
+
+  loadRepositories() {
+    const id = this.projectId();
+    if (id === null) return;
+
+    this.linkService
+      .getProjectRepositories(id)
+      .pipe(
+        tap(data => this.repositories.set(data)),
+        catchError(err => {
+          this.repositoriesError.set(apiErrorMessage(err, 'Failed to load the repositories.'));
+          return of(null);
+        }),
+      )
+      .subscribe();
   }
 
   private loadProjectName() {

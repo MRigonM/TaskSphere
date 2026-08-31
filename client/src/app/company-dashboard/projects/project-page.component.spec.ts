@@ -66,6 +66,24 @@ function flushProjectRepositories(
   http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush(body);
 }
 
+function flushConnection(
+  http: HttpTestingController,
+  repositorySelection: 0 | 1,
+  repositories: unknown[] = [],
+) {
+  http.expectOne(`${environment.apiUrl}GitHub/connection`).flush({
+    installation: {
+      id: 1,
+      installationId: 42,
+      accountLogin: 'acme-corp',
+      accountType: 'Organization',
+      repositorySelection,
+      isSuspended: false,
+    },
+    repositories,
+  });
+}
+
 function checkbox(fixture: ComponentFixture<ProjectPageComponent>): HTMLInputElement {
   return fixture.nativeElement.querySelector('[data-testid="auto-done-on-merge"]');
 }
@@ -184,5 +202,88 @@ describe('ProjectPageComponent — the repositories section', () => {
     // a link silently vanish.
     const notice: HTMLElement = fixture.nativeElement.querySelector('[data-testid="unavailable-count"]');
     expect(notice?.textContent).toContain('2');
+  });
+
+  it('offers only repositories that are not already linked, to an admin', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    flushConnection(http, 0, [
+      { id: 3, repositoryId: 300, fullName: 'acme-corp/api', defaultBranch: 'main', isPrivate: true },
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.linkable().map(r => r.fullName)).toEqual(['acme-corp/web']);
+  });
+
+  it('does not read the company connection for a member', () => {
+    const { http } = setup(project, 'User');
+
+    flushProjectRepositories(http);
+
+    // The connection endpoint is Company-gated, so a member requesting it earns a guaranteed
+    // 403 and an error message about something they cannot act on.
+    http.expectNone(`${environment.apiUrl}GitHub/connection`);
+    http.verify();
+  });
+
+  it('re-reads the links from the server after a successful link', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0, [
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.linkRepository(4);
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush({
+      id: 9, projectId: 7, gitHubRepositoryId: 4, fullName: 'acme-corp/web', linkedByUserId: 'u1',
+    });
+
+    // Refetched rather than patched: unavailableCount is derivable only server-side, so a local
+    // edit could leave the section stating something the server would contradict.
+    flushProjectRepositories(http, {
+      links: [
+        { id: 9, projectId: 7, gitHubRepositoryId: 4, fullName: 'acme-corp/web', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/web');
+    expect(fixture.componentInstance.linkable()).toEqual([]);
+    http.verify();
+  });
+
+  it('explains a failed unlink instead of dropping the row', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    fixture.componentInstance.unlinkRepository(3);
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories/3`).flush(
+      [{ code: 'GitHub.Failed', description: 'The link could not be removed.' }],
+      { status: 500, statusText: 'Server Error' },
+    );
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.repositoriesError()).toContain('could not be removed');
+    // The row is still there: nothing was removed, and hiding it would claim otherwise.
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/api');
+    http.verify();
   });
 });

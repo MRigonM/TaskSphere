@@ -1,5 +1,5 @@
 ﻿import { CommonModule } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { of } from 'rxjs';
@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { AuthStoreService } from '../../core/services/auth-store.service';
+import { GitHubConnectionService } from '../../core/services/github-connection.service';
 import { GitHubProjectLinkService } from '../../core/services/github-project-link.service';
 import { ToastService } from '../../core/services/toast.service';
 
@@ -36,10 +37,20 @@ export class ProjectPageComponent {
 
   auth = inject(AuthStoreService);
   private linkService = inject(GitHubProjectLinkService);
+  private github = inject(GitHubConnectionService);
 
   /** null means unknown — not read yet, or the read failed. Never "nothing is linked". */
   repositories = signal<ProjectRepositoriesDto | null>(null);
   repositoriesError = signal<string | null>(null);
+
+  connection = this.github.connection;
+  linking = signal(false);
+
+  /** Repositories the installation can see that this project is not linked to yet. */
+  linkable = computed(() => {
+    const linked = new Set((this.repositories()?.links ?? []).map(l => l.gitHubRepositoryId));
+    return (this.connection()?.repositories ?? []).filter(r => !linked.has(r.id));
+  });
 
   constructor(
     private route: ActivatedRoute,
@@ -67,6 +78,7 @@ export class ProjectPageComponent {
       this.loadProjectName();
       this.loadUsersAndMembers();
       this.loadRepositories();
+      this.loadConnectionIfAdmin();
     });
   }
 
@@ -82,6 +94,65 @@ export class ProjectPageComponent {
           this.repositoriesError.set(apiErrorMessage(err, 'Failed to load the repositories.'));
           return of(null);
         }),
+      )
+      .subscribe();
+  }
+
+  /**
+   * Admin-only: GET GitHub/connection is Company-gated, so calling it as a member is a
+   * guaranteed 403 and an error message about something they cannot act on.
+   */
+  loadConnectionIfAdmin() {
+    if (!this.auth.isCompany()) return;
+
+    this.github
+      .loadConnection()
+      .pipe(
+        catchError(err => {
+          this.repositoriesError.set(apiErrorMessage(err, 'Failed to load the GitHub connection.'));
+          return of(null);
+        }),
+      )
+      .subscribe();
+  }
+
+  linkRepository(repositoryId: number) {
+    const id = this.projectId();
+    if (id === null) return;
+
+    this.linking.set(true);
+    this.repositoriesError.set(null);
+
+    this.linkService
+      .link(id, repositoryId)
+      .pipe(
+        // Refetched, not patched: unavailableCount is derivable only server-side.
+        tap(() => this.loadRepositories()),
+        catchError(err => {
+          this.repositoriesError.set(apiErrorMessage(err, 'Failed to link the repository.'));
+          return of(null);
+        }),
+        finalize(() => this.linking.set(false)),
+      )
+      .subscribe();
+  }
+
+  unlinkRepository(repositoryId: number) {
+    const id = this.projectId();
+    if (id === null) return;
+
+    this.linking.set(true);
+    this.repositoriesError.set(null);
+
+    this.linkService
+      .unlink(id, repositoryId)
+      .pipe(
+        tap(() => this.loadRepositories()),
+        catchError(err => {
+          this.repositoriesError.set(apiErrorMessage(err, 'Failed to unlink the repository.'));
+          return of(null);
+        }),
+        finalize(() => this.linking.set(false)),
       )
       .subscribe();
   }

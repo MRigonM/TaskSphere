@@ -1,10 +1,14 @@
 ﻿import { CommonModule } from '@angular/common';
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, finalize, of, tap } from 'rxjs';
 
+import { GitHubReturnSyncService } from '../../core/github/github-return-sync.service';
+import { manageInstallationUrl } from '../../core/github/manage-installation-url';
 import { apiErrorMessage } from '../../core/http/api-error';
 import { CompanyRepositoryLinksDto, RepositoryLinksDto } from '../../core/models/github.models';
 import { ProjectDto } from '../../core/models/projects.models';
+import { GitHubConnectionService } from '../../core/services/github-connection.service';
 import { GitHubProjectLinkService } from '../../core/services/github-project-link.service';
 import { ProjectsApiService } from '../projects/projects.service';
 
@@ -22,6 +26,9 @@ import { ProjectsApiService } from '../projects/projects.service';
 export class GitHubRepositoryLinksComponent implements OnInit {
   private projectsApi = inject(ProjectsApiService);
   private links = inject(GitHubProjectLinkService);
+  private github = inject(GitHubConnectionService);
+  private returnSync = inject(GitHubReturnSyncService);
+  private destroyRef = inject(DestroyRef);
 
   /** null means unknown — not read yet, or the read failed. Never "nothing is linked". */
   data = signal<CompanyRepositoryLinksDto | null>(null);
@@ -52,8 +59,41 @@ export class GitHubRepositoryLinksComponent implements OnInit {
     return projectId === null ? all : all.filter(u => u.projectId === projectId);
   });
 
+  /**
+   * null when there is nothing to do on GitHub. The connection is read by the parent screen this
+   * component renders inside, so there is nothing to load here.
+   */
+  manageUrl = computed(() => manageInstallationUrl(this.github.connection()?.installation ?? null));
+
   ngOnInit() {
     this.reload();
+
+    // takeUntilDestroyed is mandatory: returned$ never completes, so a destroyed screen would
+    // keep syncing and keep consuming an arm meant for the screen the user is on now.
+    this.returnSync.returned$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.github
+        .refreshRepositories()
+        .pipe(
+          tap(() => this.load()),
+          catchError(err => {
+            this.error.set(apiErrorMessage(err, 'Failed to refresh the repositories.'));
+            return of(null);
+          })
+        )
+        .subscribe();
+    });
+  }
+
+  /**
+   * Opens the installation's own settings in a new tab. A new tab rather than a navigation: the
+   * return is detected by this document regaining visibility, which only works if it survives.
+   */
+  openGitHubSettings() {
+    const url = this.manageUrl();
+    if (!url) return;
+
+    this.returnSync.arm();
+    window.open(url, '_blank');
   }
 
   retry() {

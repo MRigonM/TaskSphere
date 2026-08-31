@@ -123,4 +123,17 @@
       again.
     </p>
   </ng-container>
+
+  <!-- Outside the loaded-state container on purpose: an empty table is exactly when the user
+       most needs the way to grant the installation another repository. -->
+  <div *ngIf="manageUrl()" class="mt-3 text-sm">
+    <span class="text-slate-400">Don't see a repository? </span>
+    <button
+      class="text-sky-300 underline hover:text-sky-200"
+      (click)="openGitHubSettings()"
+      type="button"
+    >
+      Manage repository access on GitHub ↗
+    </button>
+  </div>
 </div>

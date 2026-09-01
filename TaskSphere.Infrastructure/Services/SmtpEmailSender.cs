@@ -43,7 +43,11 @@ public class SmtpEmailSender : IEmailSender
 
             using var smtp = new SmtpClient();
             await smtp.ConnectAsync(_options.Host, _options.Port, SecureSocketOptions.StartTls, ct);
-            await smtp.AuthenticateAsync(_options.FromEmail, _options.Password, ct);
+
+            // A local SMTP catcher advertises no AUTH and refuses the command outright, so
+            // authenticating unconditionally would make the sender unusable against one.
+            if (_options.RequiresAuthentication)
+                await smtp.AuthenticateAsync(_options.FromEmail, _options.Password, ct);
             await smtp.SendAsync(message, ct);
             await smtp.DisconnectAsync(true, ct);
 

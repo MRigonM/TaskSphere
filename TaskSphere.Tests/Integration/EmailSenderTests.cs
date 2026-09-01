@@ -41,6 +41,19 @@ public class EmailSenderTests
     }
 
     [Fact]
+    public void Authenticates_only_when_a_password_is_configured()
+    {
+        // Gmail needs an app password. A local SMTP catcher advertises no AUTH and refuses the
+        // command, so sending the credentials anyway would make it unusable for local testing.
+        Assert.True(new MailOptions { Host = "smtp.gmail.com", FromEmail = "a@b.co", Password = "app-password" }
+            .RequiresAuthentication);
+        Assert.False(new MailOptions { Host = "localhost", Port = 25, FromEmail = "a@b.co", Password = "" }
+            .RequiresAuthentication);
+        Assert.False(new MailOptions { Host = "localhost", Port = 25, FromEmail = "a@b.co", Password = "   " }
+            .RequiresAuthentication);
+    }
+
+    [Fact]
     public async SystemTask.Task Reports_failure_rather_than_throwing_when_the_server_is_unreachable()
     {
         // Port 1 is reserved and nothing listens on it, so this is a connection failure without

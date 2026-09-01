@@ -16,4 +16,10 @@ public class MailOptions
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(FromEmail);
+
+    /// <summary>
+    /// Gmail requires an app password; a local SMTP catcher offers no AUTH at all and refuses the
+    /// command. Authenticating is therefore conditional on having a password to authenticate with.
+    /// </summary>
+    public bool RequiresAuthentication => !string.IsNullOrWhiteSpace(Password);
 }

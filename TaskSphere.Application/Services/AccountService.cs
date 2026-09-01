@@ -24,6 +24,7 @@ public class AccountService : IAccountService
     private readonly IConfiguration _configuration;
     private readonly ILogger<AccountService> _logger;
     private readonly ICompanyService _companyService;
+    private readonly IAccountVerificationService _verification;
 
     public AccountService(
         UserManager<AppUser> userManager,
@@ -31,7 +32,8 @@ public class AccountService : IAccountService
         RoleManager<IdentityRole> roleManager,
         IConfiguration configuration,
         ILogger<AccountService> logger,
-        ICompanyService companyService)
+        ICompanyService companyService,
+        IAccountVerificationService verification)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -39,6 +41,7 @@ public class AccountService : IAccountService
         _configuration = configuration;
         _logger = logger;
         _companyService = companyService;
+        _verification = verification;
     }
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
     {
@@ -121,7 +124,13 @@ public class AccountService : IAccountService
             await _userManager.AddToRoleAsync(user, Roles.Company);
 
             _logger.LogInformation("Successfully registered Company with UserId: {UserId}, CompanyId: {CompanyId}", user.Id, user.CompanyId);
-            return Result<string>.Success("Company registered successfully.");
+            // The account is kept whatever happens to the mail: a transient SMTP failure must not
+            // destroy a company that was created correctly.
+            var sent = await _verification.SendVerificationAsync(user.Email!, cancellationToken);
+
+            return Result<string>.Success(sent.IsSuccess
+                ? "Account created. Check your email to verify your address."
+                : "Account created, but the verification email could not be sent. Use Resend on the login page.");
         }
         catch (Exception ex)
         {

@@ -55,6 +55,14 @@ internal static class IdentityTestHarness
         return manager;
     }
 
+    public static RoleManager<IdentityRole> NewRoleManager(ApplicationDbContext db) =>
+        new(
+            new RoleStore<IdentityRole>(db),
+            new IRoleValidator<IdentityRole>[] { new RoleValidator<IdentityRole>() },
+            new UpperInvariantLookupNormalizer(),
+            new IdentityErrorDescriber(),
+            NullLogger<RoleManager<IdentityRole>>.Instance);
+
     public static SignInManager<AppUser> NewSignInManager(UserManager<AppUser> users)
     {
         var options = Options.Create(new IdentityOptions());

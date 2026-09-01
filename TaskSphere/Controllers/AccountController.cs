@@ -53,6 +53,30 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
+    [AllowAnonymous]
+    [HttpPost("AcceptInvite")]
+    public async Task<IActionResult> AcceptInvite([FromBody] AcceptInviteDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.AcceptInviteAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ForgotPassword")]
+    public async Task<IActionResult> ForgotPassword([FromBody] EmailOnlyDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ForgotPasswordAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ResetPassword")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ResetPasswordAsync(dto, ct);
+        return FromResult(result);
+    }
+
     [Audit("Created a user")]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]

@@ -54,4 +54,54 @@ public class AccountEmailsTests
         Assert.Contains("/account/verify-email?", body);
         Assert.Contains("<a ", body);
     }
+
+    [Fact]
+    public void Invite_link_points_at_the_accept_invite_screen_with_an_encoded_token()
+    {
+        var link = AccountEmails.AcceptInviteLink(BaseUrl, "member@example.com", "CfDJ8Ab+c/d==");
+
+        Assert.StartsWith("http://localhost:4200/account/accept-invite?", link);
+        Assert.Contains("email=member%40example.com", link);
+        Assert.Contains($"token={AccountEmails.EncodeToken("CfDJ8Ab+c/d==")}", link);
+        // The same '+' and '/' hazard as verification: an unencoded token arrives corrupted.
+        Assert.DoesNotContain("+", link);
+    }
+
+    [Fact]
+    public void Reset_link_points_at_the_reset_password_screen_with_an_encoded_token()
+    {
+        var link = AccountEmails.ResetPasswordLink(BaseUrl, "user@example.com", "CfDJ8Ab+c/d==");
+
+        Assert.StartsWith("http://localhost:4200/account/reset-password?", link);
+        Assert.Contains("email=user%40example.com", link);
+        Assert.Contains($"token={AccountEmails.EncodeToken("CfDJ8Ab+c/d==")}", link);
+        Assert.DoesNotContain("+", link);
+    }
+
+    [Fact]
+    public void The_invitation_names_the_company_and_carries_the_link()
+    {
+        var (subject, body) = AccountEmails.Invitation(
+            "Acme", AccountEmails.AcceptInviteLink(BaseUrl, "member@example.com", "token-value"));
+
+        // The member has never heard of TaskSphere; the company name is what makes the mail
+        // recognisable rather than suspicious.
+        Assert.Contains("Acme", subject);
+        Assert.Contains("Acme", body);
+        Assert.Contains("/account/accept-invite?", body);
+        Assert.Contains("<a ", body);
+    }
+
+    [Fact]
+    public void The_reset_message_says_what_it_is_for_and_what_to_do_if_unrequested()
+    {
+        var (subject, body) = AccountEmails.PasswordReset(
+            AccountEmails.ResetPasswordLink(BaseUrl, "user@example.com", "token-value"));
+
+        Assert.Contains("password", subject, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/account/reset-password?", body);
+        // Anyone can trigger this mail for any address, so it must tell an innocent recipient
+        // that ignoring it is safe.
+        Assert.Contains("ignore", body, StringComparison.OrdinalIgnoreCase);
+    }
 }

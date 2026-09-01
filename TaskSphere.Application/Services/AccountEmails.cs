@@ -43,4 +43,36 @@ public static class AccountEmails
          <p>If you did not create a TaskSphere account, ignore this message.</p>
          """
     );
+
+    public static string AcceptInviteLink(string baseUrl, string email, string token) =>
+        $"{baseUrl.TrimEnd('/')}/account/accept-invite" +
+        $"?email={Uri.EscapeDataString(email)}&token={EncodeToken(token)}";
+
+    public static string ResetPasswordLink(string baseUrl, string email, string token) =>
+        $"{baseUrl.TrimEnd('/')}/account/reset-password" +
+        $"?email={Uri.EscapeDataString(email)}&token={EncodeToken(token)}";
+
+    public static (string Subject, string Body) Invitation(string companyName, string link) =>
+    (
+        $"{companyName} added you to TaskSphere",
+        $"""
+         <p>{companyName} has added you to their TaskSphere workspace.</p>
+         <p>Choose a password to activate your account:</p>
+         <p><a href="{link}">Set my password</a></p>
+         <p>If the link does not open, paste this into your browser:<br>{link}</p>
+         <p>If you were not expecting this, ignore this message — the account cannot be used
+         until a password is set.</p>
+         """
+    );
+
+    public static (string Subject, string Body) PasswordReset(string link) =>
+    (
+        "Reset your TaskSphere password",
+        $"""
+         <p>Someone asked to reset the password for this TaskSphere account.</p>
+         <p><a href="{link}">Choose a new password</a></p>
+         <p>If the link does not open, paste this into your browser:<br>{link}</p>
+         <p>If this was not you, ignore this message — your password has not changed.</p>
+         """
+    );
 }

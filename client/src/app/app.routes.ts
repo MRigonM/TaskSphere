@@ -5,6 +5,7 @@ import { RegisterComponent } from './account/register/register.component';
 import { VerifyEmailComponent } from './account/verify-email/verify-email.component';
 import { AcceptInviteComponent } from './account/accept-invite/accept-invite.component';
 import { ForgotPasswordComponent } from './account/forgot-password/forgot-password.component';
+import { ResetPasswordComponent } from './account/reset-password/reset-password.component';
 import { guestGuard } from './core/guards/guest.guard';
 import { UsersDashboardComponent } from './company-dashboard/users/users-dashboard.component';
 import { companyGuard } from './core/guards/company.guard';
@@ -25,6 +26,7 @@ export const routes: Routes = [
   { path: 'account/verify-email', component: VerifyEmailComponent, canActivate: [guestGuard] },
   { path: 'account/accept-invite', component: AcceptInviteComponent, canActivate: [guestGuard] },
   { path: 'account/forgot-password', component: ForgotPasswordComponent, canActivate: [guestGuard] },
+  { path: 'account/reset-password', component: ResetPasswordComponent, canActivate: [guestGuard] },
   { path: 'dashboard/users', component: UsersDashboardComponent, canActivate: [companyGuard] },
   { path: 'dashboard/audit', component: AuditDashboardComponent, canActivate: [companyGuard] },
   { path: 'dashboard/github', component: GitHubConnectionComponent, canActivate: [companyGuard] },

@@ -51,4 +51,21 @@ public class CompanyService : ICompanyService
             return Result<CompanyDto>.Failure(EntityError.CreationUnexpectedError);
         }
     }
+
+    public async Task<Result<CompanyDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var company = await _unitOfWork.Companies.GetByIdAsync(id, cancellationToken);
+
+            return company is null
+                ? Result<CompanyDto>.Failure(new Error("NotFound", "Company not found."))
+                : Result<CompanyDto>.Success(_mapper.Map<CompanyDto>(company));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading Company: {Id}", id);
+            return Result<CompanyDto>.Failure(new Error("General.Error", "Unexpected error reading the company."));
+        }
+    }
 }

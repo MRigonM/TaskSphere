@@ -14,6 +14,8 @@ import {CommonModule, NgIf} from '@angular/common';
 export class LoginComponent {
   loading = false;
   error = '';
+  unconfirmed = false;
+  resendNotice = '';
   form: FormGroup;
   constructor(
     private fb: FormBuilder,
@@ -46,6 +48,29 @@ export class LoginComponent {
     return 'Login failed';
   }
 
+  /**
+   * Keyed off the error CODE, never the message text: the wording is a server-side string that
+   * can change, and matching on it would make the button appear or vanish with a copy edit.
+   */
+  private isUnconfirmed(err: any): boolean {
+    return Array.isArray(err?.error)
+      && err.error.some((e: any) => e?.code === 'Auth.EmailNotConfirmed');
+  }
+
+  resendVerification() {
+    const { email } = this.form.getRawValue();
+    this.resendNotice = '';
+    this.cdr.detectChanges();
+
+    this.api.resendVerification(email).subscribe({
+      next: (msg) => { this.resendNotice = msg; this.cdr.detectChanges(); },
+      error: () => {
+        this.resendNotice = 'Could not request another email. Try again shortly.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
   submit() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -66,6 +91,7 @@ export class LoginComponent {
       },
       error: (err) => {
         this.error = this.extractApiError(err);
+        this.unconfirmed = this.isUnconfirmed(err);
         this.loading = false;
         this.cdr.detectChanges();
       },

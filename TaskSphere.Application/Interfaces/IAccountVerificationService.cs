@@ -14,4 +14,16 @@ public interface IAccountVerificationService
     /// caller, while a resend deliberately does not.
     /// </summary>
     Task<Result> SendVerificationAsync(string email, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets the first password for an invited member. On success the address is confirmed, by the
+    /// rule that a token-backed password set proves mailbox access.
+    /// </summary>
+    Task<Result<string>> AcceptInviteAsync(AcceptInviteDto dto, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets a new password from a reset link. On success the address is confirmed, so a user who
+    /// never verified cannot be trapped behind the login gate.
+    /// </summary>
+    Task<Result<string>> ResetPasswordAsync(ResetPasswordDto dto, CancellationToken ct = default);
 }

@@ -19,6 +19,8 @@ public class AccountVerificationService : IAccountVerificationService
     private const string NeutralAnswer =
         "If that address has an account awaiting verification, a link is on its way.";
 
+    private const string InvalidLink = "This link is no longer valid — request a new one.";
+
     private readonly UserManager<AppUser> _userManager;
     private readonly IEmailSender _emailSender;
     private readonly ClientOptions _client;
@@ -90,6 +92,47 @@ public class AccountVerificationService : IAccountVerificationService
             _logger.LogWarning("Verification email to {Email} was not sent.", email);
 
         return sent;
+    }
+
+    public Task<Result<string>> AcceptInviteAsync(AcceptInviteDto dto, CancellationToken ct = default) =>
+        SetPasswordFromTokenAsync(
+            dto.Email, dto.Token, dto.Password,
+            "Your password is set. You can log in.");
+
+    public Task<Result<string>> ResetPasswordAsync(ResetPasswordDto dto, CancellationToken ct = default) =>
+        SetPasswordFromTokenAsync(
+            dto.Email, dto.Token, dto.Password,
+            "Your password has been changed. You can log in.");
+
+    /// <summary>
+    /// Accepting an invitation and resetting a password are the same three moves — decode, set,
+    /// confirm — differing only in wording. Every failure answers identically, so an unknown
+    /// address is indistinguishable from a stale token.
+    /// </summary>
+    private async Task<Result<string>> SetPasswordFromTokenAsync(
+        string email, string encodedToken, string password, string successMessage)
+    {
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user is null)
+            return Result<string>.Failure(new Error("Auth.TokenInvalid", InvalidLink));
+
+        var token = AccountEmails.DecodeToken(encodedToken);
+        if (token is null)
+            return Result<string>.Failure(new Error("Auth.TokenInvalid", InvalidLink));
+
+        var reset = await _userManager.ResetPasswordAsync(user, token, password);
+        if (!reset.Succeeded)
+            return Result<string>.Failure(new Error("Auth.TokenInvalid", InvalidLink));
+
+        // The rule the design rests on: a token-backed password set proves mailbox access, and
+        // therefore confirms the address.
+        if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            await _userManager.UpdateAsync(user);
+        }
+
+        return Result<string>.Success(successMessage);
     }
 
     private bool IsThrottled(string email) => _cache.TryGetValue(CooldownKey(email), out _);

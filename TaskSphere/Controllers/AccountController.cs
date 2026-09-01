@@ -57,7 +57,7 @@ public class AccountController : ApiBaseController
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
     [HttpPost("CreateUser")]
-    public async Task<IActionResult> CreateUser([FromBody] RegisterDto dto, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateUser([FromBody] InviteUserDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountService.CreateUserForCompanyAsync(dto, CompanyId, cancellationToken);
         return FromResult(result);

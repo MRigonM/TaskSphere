@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaskSphere.Application.Interfaces;
+using TaskSphere.Application.Settings;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.Company;
 using TaskSphere.Domain.DataTransferObjects.Identity;
@@ -25,6 +27,8 @@ public class AccountService : IAccountService
     private readonly ILogger<AccountService> _logger;
     private readonly ICompanyService _companyService;
     private readonly IAccountVerificationService _verification;
+    private readonly IEmailSender _emailSender;
+    private readonly ClientOptions _client;
 
     public AccountService(
         UserManager<AppUser> userManager,
@@ -33,7 +37,9 @@ public class AccountService : IAccountService
         IConfiguration configuration,
         ILogger<AccountService> logger,
         ICompanyService companyService,
-        IAccountVerificationService verification)
+        IAccountVerificationService verification,
+        IEmailSender emailSender,
+        IOptions<ClientOptions> client)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -42,6 +48,8 @@ public class AccountService : IAccountService
         _logger = logger;
         _companyService = companyService;
         _verification = verification;
+        _emailSender = emailSender;
+        _client = client.Value;
     }
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
     {
@@ -146,7 +154,7 @@ public class AccountService : IAccountService
         }
     }
     
-    public async Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, Guid companyId, CancellationToken ct = default)
+    public async Task<Result<string>> CreateUserForCompanyAsync(InviteUserDto dto, Guid companyId, CancellationToken ct = default)
     {
         try
         {
@@ -157,11 +165,11 @@ public class AccountService : IAccountService
                 Name = dto.Name,
                 CompanyId = companyId
             };
-            
-            if (dto.Password != dto.ConfirmPassword)
-                return Result<string>.Failure("Passwords do not match.");
-    
-            var result = await _userManager.CreateAsync(user, dto.Password);
+
+            // No password: the member chooses their own through the invitation link. An admin who
+            // picks a password for someone else has to transmit it somehow, and every way of
+            // doing that is worse than a link.
+            var result = await _userManager.CreateAsync(user);
             if (!result.Succeeded)
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
@@ -173,7 +181,18 @@ public class AccountService : IAccountService
 
             await _userManager.AddToRoleAsync(user, Roles.User);
 
-            return Result<string>.Success("User created successfully.");
+            var company = await _companyService.GetByIdAsync(companyId, ct);
+            var companyName = company.IsSuccess ? company.Value!.Name : "Your team";
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var link = AccountEmails.AcceptInviteLink(_client.BaseUrl, dto.Email, token);
+            var (subject, body) = AccountEmails.Invitation(companyName, link);
+
+            var sent = await _emailSender.SendAsync(dto.Email, subject, body, ct);
+
+            return Result<string>.Success(sent.IsSuccess
+                ? "Member added. They have been emailed a link to set their password."
+                : "Member added, but the invitation email could not be sent.");
         }
         catch (Exception ex)
         {

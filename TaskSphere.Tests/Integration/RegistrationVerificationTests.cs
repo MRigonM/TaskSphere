@@ -131,6 +131,8 @@ internal sealed class RegistrationHarness
             }).Build(),
             NullLogger<AccountService>.Instance,
             companies,
-            verification);
+            verification,
+            sender,
+            Options.Create(new ClientOptions { BaseUrl = "http://localhost:4200" }));
     }
 }

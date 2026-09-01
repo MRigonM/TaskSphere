@@ -26,4 +26,10 @@ public interface IAccountVerificationService
     /// never verified cannot be trapped behind the login gate.
     /// </summary>
     Task<Result<string>> ResetPasswordAsync(ResetPasswordDto dto, CancellationToken ct = default);
+
+    /// <summary>
+    /// Emails a reset link. Answers identically whether or not the address has an account, so it
+    /// cannot be used to enumerate registered addresses.
+    /// </summary>
+    Task<Result<string>> ForgotPasswordAsync(EmailOnlyDto dto, CancellationToken ct = default);
 }

@@ -69,7 +69,7 @@ public class AccountVerificationService : IAccountVerificationService
         // address, a throttled address and a failed send are indistinguishable from outside.
         var user = await _userManager.FindByEmailAsync(dto.Email);
 
-        if (user is not null && !user.EmailConfirmed && !IsThrottled(dto.Email))
+        if (user is not null && !user.EmailConfirmed && !IsThrottled(VerifyPurpose, dto.Email))
             await SendVerificationAsync(dto.Email, ct);
 
         return Result<string>.Success(NeutralAnswer);
@@ -85,13 +85,38 @@ public class AccountVerificationService : IAccountVerificationService
         var link = AccountEmails.VerificationLink(_client.BaseUrl, email, token);
         var (subject, body) = AccountEmails.Verification(link);
 
-        _cache.Set(CooldownKey(email), true, Cooldown);
+        _cache.Set(CooldownKey(VerifyPurpose, email), true, Cooldown);
 
         var sent = await _emailSender.SendAsync(email, subject, body, ct);
         if (!sent.IsSuccess)
             _logger.LogWarning("Verification email to {Email} was not sent.", email);
 
         return sent;
+    }
+
+    private const string ForgotNeutralAnswer =
+        "If that address has an account, a password reset link is on its way.";
+
+    public async Task<Result<string>> ForgotPasswordAsync(EmailOnlyDto dto, CancellationToken ct = default)
+    {
+        // Same shape as ResendVerificationAsync: unknown address, throttled address and failed
+        // send are all indistinguishable from outside.
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+
+        if (user is not null && !IsThrottled(ForgotPurpose, dto.Email))
+        {
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var link = AccountEmails.ResetPasswordLink(_client.BaseUrl, dto.Email, token);
+            var (subject, body) = AccountEmails.PasswordReset(link);
+
+            _cache.Set(CooldownKey(ForgotPurpose, dto.Email), true, Cooldown);
+
+            var sent = await _emailSender.SendAsync(dto.Email, subject, body, ct);
+            if (!sent.IsSuccess)
+                _logger.LogWarning("Password reset email to {Email} was not sent.", dto.Email);
+        }
+
+        return Result<string>.Success(ForgotNeutralAnswer);
     }
 
     public Task<Result<string>> AcceptInviteAsync(AcceptInviteDto dto, CancellationToken ct = default) =>
@@ -135,7 +160,15 @@ public class AccountVerificationService : IAccountVerificationService
         return Result<string>.Success(successMessage);
     }
 
-    private bool IsThrottled(string email) => _cache.TryGetValue(CooldownKey(email), out _);
+    private const string VerifyPurpose = "verify";
+    private const string ForgotPurpose = "forgot";
 
-    private static string CooldownKey(string email) => $"verify-cooldown:{email.ToLowerInvariant()}";
+    private bool IsThrottled(string purpose, string email) =>
+        _cache.TryGetValue(CooldownKey(purpose, email), out _);
+
+    /// The purpose is part of the key because resend-verification and forgot-password are
+    /// separate requests that happen to share an address. One bucket would let either silently
+    /// swallow the other, and the neutral answer both return would hide it.
+    private static string CooldownKey(string purpose, string email) =>
+        $"{purpose}-cooldown:{email.ToLowerInvariant()}";
 }

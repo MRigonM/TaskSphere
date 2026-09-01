@@ -55,6 +55,13 @@ public class AccountService : IAccountService
             if (!result.Succeeded)
                 return Result<AuthResponseDto>.Failure("Invalid email or password.");
 
+            // After the password check, never before: an unverified-account answer returned for a
+            // password nobody guessed would tell an outsider which addresses are registered.
+            if (!user.EmailConfirmed)
+                return Result<AuthResponseDto>.Failure(new Error(
+                    "Auth.EmailNotConfirmed",
+                    "Confirm your email address before logging in."));
+
             var roles = await _userManager.GetRolesAsync(user);
             var role = roles.FirstOrDefault() ?? Roles.User;
 

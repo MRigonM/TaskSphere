@@ -84,6 +84,7 @@ public static class ApplicationServices
         //Mail
         services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.Configure<ClientOptions>(configuration.GetSection(ClientOptions.SectionName));
 
         //GitHub
         services.AddMemoryCache();

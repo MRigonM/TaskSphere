@@ -1,8 +1,9 @@
 namespace TaskSphere.Application.Settings;
 
 /// <summary>
-/// Bound from the "Mail" section. <see cref="Password"/> is a Gmail app password and lives in
-/// .NET user-secrets — never in appsettings.json, because this repository is public.
+/// Bound from the "Mail" section. <see cref="Password"/> is a Gmail app password and, with
+/// <see cref="FromEmail"/>, lives in the git-ignored appsettings.Local.json — never in
+/// appsettings.json, because this repository is public.
 /// </summary>
 public class MailOptions
 {

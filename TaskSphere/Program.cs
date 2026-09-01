@@ -5,6 +5,11 @@ using TaskSphere.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Optional, git-ignored overlay for values that must not reach a public repository — today the
+// Gmail app password and the sending address. Added last so it wins over appsettings.json; it is
+// absent in any deployed environment, which is why overriding environment variables is harmless.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 

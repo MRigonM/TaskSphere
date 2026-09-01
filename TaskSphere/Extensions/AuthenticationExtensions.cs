@@ -11,6 +11,15 @@ public static class AuthenticationExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Without this, a missing key surfaces as an opaque argument exception out of
+        // SymmetricSecurityKey, and a too-short one as a signing failure on the first login
+        // attempt. HS256 needs 256 bits of key material, so both are caught here at boot.
+        var signingKey = configuration["Jwt:Key"];
+        if (string.IsNullOrWhiteSpace(signingKey) || Encoding.UTF8.GetByteCount(signingKey) < 32)
+            throw new InvalidOperationException(
+                "Jwt:Key is missing or shorter than the 32 bytes HS256 requires. Set it with: " +
+                "dotnet user-secrets set \"Jwt:Key\" \"<value>\" --project TaskSphere");
+
         services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -27,7 +36,7 @@ public static class AuthenticationExtensions
                     ValidIssuer = configuration["Jwt:Issuer"],
                     ValidAudience = configuration["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!)
+                        Encoding.UTF8.GetBytes(signingKey)
                     ),
                     RoleClaimType = ClaimTypes.Role,
                     NameClaimType = ClaimTypes.NameIdentifier,

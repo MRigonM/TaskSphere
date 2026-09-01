@@ -11,10 +11,14 @@ namespace TaskSphere.Controllers;
 public class AccountController : ApiBaseController
 {
     private readonly IAccountService _accountService;
+    private readonly IAccountVerificationService _verificationService;
 
-    public AccountController(IAccountService accountService)
+    public AccountController(
+        IAccountService accountService,
+        IAccountVerificationService verificationService)
     {
         _accountService = accountService;
+        _verificationService = verificationService;
     }
 
     [AllowAnonymous]
@@ -30,6 +34,22 @@ public class AccountController : ApiBaseController
     public async Task<IActionResult> Login([FromBody] LoginDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountService.LoginAsync(dto, cancellationToken);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("VerifyEmail")]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.VerifyEmailAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ResendVerification")]
+    public async Task<IActionResult> ResendVerification([FromBody] EmailOnlyDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ResendVerificationAsync(dto, ct);
         return FromResult(result);
     }
 

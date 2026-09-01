@@ -1,0 +1,25 @@
+<div class="mx-auto max-w-md px-4 py-10">
+  <div *ngIf="message() as text" class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+    <h1 class="text-lg font-semibold text-emerald-100">Email verified</h1>
+    <p class="mt-2 text-sm text-emerald-200">{{ text }}</p>
+    <a
+      routerLink="/account/login"
+      class="mt-4 inline-block rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 transition"
+    >
+      Go to login
+    </a>
+  </div>
+
+  <div *ngIf="error() as text" class="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
+    <h1 class="text-lg font-semibold text-red-100">Could not verify</h1>
+    <p class="mt-2 text-sm text-red-200">{{ text }}</p>
+    <a
+      routerLink="/account/login"
+      class="mt-4 inline-block rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10 transition"
+    >
+      Back to login
+    </a>
+  </div>
+
+  <p *ngIf="!message() && !error()" class="text-sm text-white/60">Verifying your address…</p>
+</div>

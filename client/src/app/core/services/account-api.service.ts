@@ -25,6 +25,14 @@ export class AccountApiService {
     return this.http.post<AuthResponseDto>(`${this.base}Login`, dto);
   }
 
+  verifyEmail(email: string, token: string): Observable<string> {
+    return this.http.post(`${this.base}VerifyEmail`, { email, token }, { responseType: 'text' });
+  }
+
+  resendVerification(email: string): Observable<string> {
+    return this.http.post(`${this.base}ResendVerification`, { email }, { responseType: 'text' });
+  }
+
   createUser(dto: RegisterDto): Observable<void> {
     return this.http.post(`${this.base}CreateUser`, dto, { responseType: 'text' })
       .pipe(tap(() => {}), map(() => void 0));

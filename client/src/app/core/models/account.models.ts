@@ -40,3 +40,22 @@ export interface UserQueryDto {
   page?: number;
   pageSize?: number;
 }
+
+export interface InviteUserDto {
+  name: string;
+  email: string;
+}
+
+export interface AcceptInviteDto {
+  email: string;
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface ResetPasswordDto {
+  email: string;
+  token: string;
+  password: string;
+  confirmPassword: string;
+}

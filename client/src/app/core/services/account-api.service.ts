@@ -2,9 +2,11 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import {
+  AcceptInviteDto,
   AuthResponseDto,
   LoginDto,
   RegisterDto,
+  ResetPasswordDto,
   UpdateUserDto,
   UserDto,
   UserQueryDto,
@@ -31,6 +33,18 @@ export class AccountApiService {
 
   resendVerification(email: string): Observable<string> {
     return this.http.post(`${this.base}ResendVerification`, { email }, { responseType: 'text' });
+  }
+
+  acceptInvite(dto: AcceptInviteDto): Observable<string> {
+    return this.http.post(`${this.base}AcceptInvite`, dto, { responseType: 'text' });
+  }
+
+  forgotPassword(email: string): Observable<string> {
+    return this.http.post(`${this.base}ForgotPassword`, { email }, { responseType: 'text' });
+  }
+
+  resetPassword(dto: ResetPasswordDto): Observable<string> {
+    return this.http.post(`${this.base}ResetPassword`, dto, { responseType: 'text' });
   }
 
   createUser(dto: RegisterDto): Observable<void> {

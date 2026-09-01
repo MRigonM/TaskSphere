@@ -62,6 +62,38 @@ describe('apiErrorMessage', () => {
     );
   });
 
+  it('parses a Result<T> failure delivered as text', () => {
+    // Every Account endpoint posts with responseType: 'text', because the success bodies are
+    // plain strings. Angular then leaves the ERROR body unparsed too, so the same
+    // IReadOnlyList<Error> arrives as a string and would otherwise be rendered verbatim.
+    const err = {
+      status: 400,
+      error:
+        '[{"code":"Auth.TokenInvalid","description":"This link is no longer valid — request a new one."}]',
+    };
+
+    expect(apiErrorMessage(err, 'fallback')).toBe(
+      'This link is no longer valid — request a new one.'
+    );
+  });
+
+  it('never renders raw JSON from a text-typed response', () => {
+    const err = { status: 400, error: '[{"code":"Auth.TokenInvalid","description":"Expired."}]' };
+
+    expect(apiErrorMessage(err, 'fallback')).not.toContain('"code"');
+  });
+
+  it('parses ValidationProblemDetails delivered as text', () => {
+    // AcceptInvite and ResetPassword carry FluentValidation validators and are posted as text,
+    // so this shape reaches the same string path.
+    const err = {
+      status: 400,
+      error: '{"title":"One or more validation errors occurred.","errors":{"Password":["Password must contain a digit."]}}',
+    };
+
+    expect(apiErrorMessage(err, 'fallback')).toBe('Password must contain a digit.');
+  });
+
   it('falls back rather than rendering an HTML error page', () => {
     // A dev-mode 500 returns a stack-trace page as a string body.
     const err = { status: 500, error: '<!DOCTYPE html><html><body>Stack trace</body></html>' };

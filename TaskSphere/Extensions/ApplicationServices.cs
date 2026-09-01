@@ -7,6 +7,7 @@ using TaskSphere.Infrastructure.Services;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Application.Mappings;
 using TaskSphere.Application.Services;
+using TaskSphere.Application.Settings;
 using TaskSphere.Auditing;
 using TaskSphere.Domain.Audit;
 using TaskSphere.Domain.Entities.Identity;
@@ -79,6 +80,10 @@ public static class ApplicationServices
         services.AddHostedService<AuditWriterService>();
 
         services.AddHostedService<TaskSphere.Startup.TaskKeyBackfillService>();
+
+        //Mail
+        services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
 
         //GitHub
         services.AddMemoryCache();

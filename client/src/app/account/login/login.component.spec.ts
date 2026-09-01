@@ -83,4 +83,11 @@ describe('LoginComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('on its way');
   });
+
+  it('links to the forgot-password screen', () => {
+    const { fixture } = setup();
+
+    const link = fixture.nativeElement.querySelector('a[href="/account/forgot-password"]');
+    expect(link).toBeTruthy();
+  });
 });

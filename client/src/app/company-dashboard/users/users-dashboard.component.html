@@ -184,29 +184,8 @@
             Enter a valid email.
           </div>
         </label>
-        <div *ngIf="modalMode() === 'create'" class="grid gap-3">
-          <label class="block">
-            <span class="text-xs text-white/60">Password</span>
-            <input
-              type="password"
-              formControlName="password"
-              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
-              placeholder="••••••••"
-            />
-          </label>
-          <label class="block">
-            <span class="text-xs text-white/60">Confirm password</span>
-            <input
-              type="password"
-              formControlName="confirmPassword"
-              class="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
-              placeholder="••••••••"
-            />
-          </label>
-
-          <p class="text-xs text-white/50">
-            Password must be at least 8 characters.
-          </p>
+        <div *ngIf="modalMode() === 'create'" class="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
+          They will receive an email with a link to set their own password.
         </div>
         <div *ngIf="modalMode() === 'edit'" class="grid gap-3">
           <label class="block">

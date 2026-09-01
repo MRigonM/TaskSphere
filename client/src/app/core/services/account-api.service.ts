@@ -4,6 +4,7 @@ import { environment } from '../../../environments/environment';
 import {
   AcceptInviteDto,
   AuthResponseDto,
+  InviteUserDto,
   LoginDto,
   RegisterDto,
   ResetPasswordDto,
@@ -47,7 +48,7 @@ export class AccountApiService {
     return this.http.post(`${this.base}ResetPassword`, dto, { responseType: 'text' });
   }
 
-  createUser(dto: RegisterDto): Observable<void> {
+  createUser(dto: InviteUserDto): Observable<void> {
     return this.http.post(`${this.base}CreateUser`, dto, { responseType: 'text' })
       .pipe(tap(() => {}), map(() => void 0));
   }

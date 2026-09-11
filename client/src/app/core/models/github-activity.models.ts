@@ -64,15 +64,39 @@ export interface SyncFailureDto {
 }
 
 /**
+ * The outcome of one pass — commits or pull requests — across the task's repositories.
+ *
+ * `attempted: false` means every repository was inside this pass's cooldown: a healthy skip, not
+ * a failure. `attempted: true` with `succeeded: false` means at least one repository failed, and
+ * `TaskActivityRefreshDto.failures` names which. Fetching nothing new is still success.
+ *
+ * `refreshedAtUtc` is null when any repository has never had this pass succeed — "unknown",
+ * never "old". A failed pass leaves it as it was rather than claiming freshness.
+ */
+export interface RefreshPassDto {
+  attempted: boolean;
+  succeeded: boolean;
+  refreshedAtUtc: string | null;
+}
+
+/**
  * Returned by the task-scoped, member-reachable refresh. `lastSyncedAtUtc` mirrors the same
  * field on `TaskGitHubActivityDto`, but the panel does not read it from here — it always
  * follows the refresh with a read of its own, so this value is currently unused on the client.
+ *
+ * `refreshed` is a convenience roll-up and **cannot** distinguish "fetched", "skipped by
+ * cooldown" and "failed" — reading it alone caused a wrong diagnosis on 2026-08-30. Read
+ * `commits`, `pullRequests` and `failures` instead. The panel does not render these yet; they
+ * exist so the API stops conflating the three states.
  */
 export interface TaskActivityRefreshDto {
   refreshed: boolean;
   repositoriesRefreshed: number;
   tasksTransitioned: number;
   lastSyncedAtUtc: string | null;
+  commits: RefreshPassDto;
+  pullRequests: RefreshPassDto;
+  failures: SyncFailureDto[];
 }
 
 /** Partial success is a result, not an error: a 200 can still carry failures. */

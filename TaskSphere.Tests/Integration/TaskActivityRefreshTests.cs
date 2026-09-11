@@ -856,4 +856,176 @@ public class TaskActivityRefreshTests : IAsyncLifetime
         var installation = await verify.GitHubInstallations.FirstAsync(i => i.CompanyId == _companyId);
         Assert.Null(installation.ActivitySyncedAtUtc);
     }
+
+    // ---- reporting: "skipped" must be distinguishable from "failed" ------------------------
+    //
+    // The defect these pin: Refreshed was set when ANY pass stamped and the DTO carried no
+    // failures list, so one bool covered three states — commits fetched, commits skipped by
+    // cooldown, and every pass failed. That ambiguity produced a wrong diagnosis by the person
+    // who specified the feature within ten minutes of first use.
+
+    [Fact]
+    public async SystemTask.Task AFailingCommitsPass_IsReportedAsAFailure_NotAsSilence()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailCommitsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+
+        // The commits mirror already returns its per-branch failures; this path used to discard
+        // them, which is precisely why a failure looked like a healthy cooldown skip.
+        var failure = Assert.Single(result.Value!.Failures);
+        Assert.Equal("rigon-org/api", failure.RepositoryFullName);
+
+        // Attempted, because the cooldown did not stop it. Not succeeded, because GitHub 500'd.
+        Assert.True(result.Value!.Commits.Attempted);
+        Assert.False(result.Value!.Commits.Succeeded);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingPullRequestsPass_IsReportedAsAFailure()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailPullsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Value!.Failures, f => f.RepositoryFullName == "rigon-org/api");
+
+        Assert.True(result.Value!.PullRequests.Attempted);
+        Assert.False(result.Value!.PullRequests.Succeeded);
+
+        // The commits pass is independent and healthy, so it must not be tarred by the pull
+        // failure — the whole point of reporting per pass rather than one bool.
+        Assert.True(result.Value!.Commits.Succeeded);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailingBranchesPass_IsReportedAsAFailure()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailBranchesOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Value!.Failures, f => f.RepositoryFullName == "rigon-org/api");
+
+        // Branches gate the commits pass, so a branch failure means commits never ran at all.
+        Assert.False(result.Value!.Commits.Succeeded);
+    }
+
+    [Fact]
+    public async SystemTask.Task ACooldownSkip_ReportsNoFailure_AndSaysItWasNotAttempted()
+    {
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        var stamped = DateTime.UtcNow.AddSeconds(-5);
+        repository.PullRequestsRefreshedAtUtc = stamped;
+        repository.CommitsRefreshedAtUtc = stamped;
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(api.Calls);
+
+        // The distinction the old DTO could not express: nothing was fetched, and that is a
+        // healthy skip rather than a failure. Both must be readable without guessing.
+        Assert.Empty(result.Value!.Failures);
+        Assert.False(result.Value!.Commits.Attempted);
+        Assert.False(result.Value!.PullRequests.Attempted);
+    }
+
+    [Fact]
+    public async SystemTask.Task EachPassCarriesItsOwnStamp_SoTheyCanBeReportedSeparately()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var before = DateTime.UtcNow;
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+
+        // Separate columns already exist on GitHubRepository and carry different cooldowns, so
+        // collapsing them into one "Last synced" label reports pull freshness on a panel that is
+        // mostly commits. Each pass reports its own.
+        Assert.NotNull(result.Value!.Commits.RefreshedAtUtc);
+        Assert.NotNull(result.Value!.PullRequests.RefreshedAtUtc);
+        Assert.True(result.Value!.Commits.RefreshedAtUtc >= before);
+        Assert.True(result.Value!.PullRequests.RefreshedAtUtc >= before);
+    }
+
+    [Fact]
+    public async SystemTask.Task TheTwoStamps_AreIndependent_NotBothTheSharedLastStamp()
+    {
+        // The guard that actually matters, and the one the pair of NotNull assertions above does
+        // NOT make: wiring both passes to LastStamp would satisfy every other test in this group,
+        // because they only ever check "non-null and recent". Here the commits column is inside
+        // its five-minute cooldown while pulls are outside their sixty seconds, so the two must
+        // come back genuinely different — and LastStamp, being the older of the pair, could not
+        // produce the pull value at all.
+        await using var seed = NewContext();
+        var repository = await seed.GitHubRepositories.FirstAsync(r => r.Id == _apiRepositoryId);
+        var staleCommits = DateTime.UtcNow.AddMinutes(-2);   // inside CommitCooldown (5m)
+        repository.CommitsRefreshedAtUtc = staleCommits;
+        repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow.AddMinutes(-2); // outside PullCooldown (60s)
+        await seed.SaveChangesAsync();
+
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient();
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+
+        // Commits were skipped by their own cooldown, so that column did not move.
+        Assert.False(result.Value!.Commits.Attempted);
+        Assert.True(result.Value!.PullRequests.Attempted);
+
+        // The pull pass ran and stamped; the commits stamp is still the old one.
+        Assert.True(result.Value!.PullRequests.RefreshedAtUtc > result.Value!.Commits.RefreshedAtUtc);
+
+        // And LastSyncedAtUtc is the older of the two, so it cannot stand in for the pull stamp.
+        Assert.Equal(result.Value!.Commits.RefreshedAtUtc, result.Value!.LastSyncedAtUtc);
+    }
+
+    [Fact]
+    public async SystemTask.Task AFailedPass_LeavesItsStampNull_RatherThanReportingFreshness()
+    {
+        await using var db = NewContext();
+        var api = new FakeGitHubApiClient { FailCommitsOnly = true };
+        var service = NewService(db, api);
+
+        var result = await service.RefreshAsync(
+            _companyId, _ts42TaskId, MemberUserId, isCompanyAdmin: true, actorUsername: null);
+
+        Assert.True(result.IsSuccess);
+
+        // The repository has never had a successful commits pass, and this one failed, so there
+        // is no honest freshness to report. Null means "unknown", never "old".
+        Assert.Null(result.Value!.Commits.RefreshedAtUtc);
+
+        // The pull pass is unaffected and did stamp.
+        Assert.NotNull(result.Value!.PullRequests.RefreshedAtUtc);
+    }
 }

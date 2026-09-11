@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.Common;
+using TaskSphere.Domain.DataTransferObjects.GitHub;
 using TaskSphere.Domain.Interfaces;
 
 // The entity, not the namespace: TaskSphere.Domain.Entities.Task shadows Task otherwise.
@@ -72,7 +73,7 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
             return Result<TaskActivityRefreshDto>.Failure(EntityError.NotFound(taskId));
 
         if (task.ProjectId is null)
-            return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(false, 0, 0, null));
+            return Result<TaskActivityRefreshDto>.Success(Quiet(null, null, null));
 
         var linkedRepositoryIds = await _unitOfWork.ProjectRepositoryLinks
             .GetByProject(companyId, task.ProjectId.Value)
@@ -81,7 +82,7 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
             .ToListAsync(cancellationToken);
 
         if (linkedRepositoryIds.Count == 0)
-            return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(false, 0, 0, null));
+            return Result<TaskActivityRefreshDto>.Success(Quiet(null, null, null));
 
         var installation = await _unitOfWork.GitHubInstallations.GetByCompanyAsync(companyId, cancellationToken);
 
@@ -110,11 +111,26 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
             .Where(w => w.RefreshPulls || w.RefreshCommits)
             .ToList();
 
+        // Every repository sat inside both cooldowns. Neither pass was attempted, and that is a
+        // healthy skip rather than a failure — the distinction the old single bool could not make.
         if (work.Count == 0)
-            return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(false, 0, 0, LastStamp(repositories)));
+        {
+            return Result<TaskActivityRefreshDto>.Success(Quiet(
+                LastStamp(repositories),
+                OldestStamp(repositories, r => r.CommitsRefreshedAtUtc),
+                OldestStamp(repositories, r => r.PullRequestsRefreshedAtUtc)));
+        }
 
         var since = now.AddDays(-SyncWindowDays);
         var refreshed = 0;
+
+        // Reported per pass, because the two carry different cooldowns and fail independently:
+        // a repository GitHub is failing on must not read as a healthy cooldown skip.
+        var failures = new List<SyncFailureDto>();
+        var commitsAttempted = work.Any(w => w.RefreshCommits);
+        var pullsAttempted = work.Any(w => w.RefreshPulls);
+        var commitsFailed = false;
+        var pullsFailed = false;
 
         foreach (var w in work)
         {
@@ -131,6 +147,17 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
 
                 var didSomething = false;
 
+                if (!branchResult.IsSuccess)
+                {
+                    failures.Add(new SyncFailureDto(w.Repository.FullName, branchResult.Errors[0].Description));
+
+                    // Branches gate the commits pass, so a failed listing means commits could not
+                    // run at all for this repository. Counting it against commits is what stops a
+                    // blocked pass reading as a successful one.
+                    if (w.RefreshCommits)
+                        commitsFailed = true;
+                }
+
                 if (branchResult.IsSuccess && w.RefreshCommits)
                 {
                     var (_, commitFailures) = await _commits.RefreshAsync(
@@ -144,6 +171,14 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
                         w.Repository.CommitsRefreshedAtUtc = DateTime.UtcNow;
                         didSomething = true;
                     }
+                    else
+                    {
+                        // The mirror has always returned these; this path used to drop them on the
+                        // floor, which is exactly why a failing repository was indistinguishable
+                        // from a healthy cooldown skip.
+                        failures.AddRange(commitFailures);
+                        commitsFailed = true;
+                    }
                 }
 
                 if (w.RefreshPulls)
@@ -155,6 +190,11 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
                     {
                         w.Repository.PullRequestsRefreshedAtUtc = DateTime.UtcNow;
                         didSomething = true;
+                    }
+                    else
+                    {
+                        failures.Add(new SyncFailureDto(w.Repository.FullName, pullResult.Errors[0].Description));
+                        pullsFailed = true;
                     }
                 }
 
@@ -168,11 +208,23 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
 
                 refreshed++;
             }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 // A rejected save leaves its entity tracked as Modified; without this the next
                 // repository's save re-sends the bad write and fails too.
                 _unitOfWork.DiscardPendingChanges();
+
+                // Previously swallowed with no trace at all, so a repository that threw answered
+                // exactly like one that was quietly inside its cooldown. Both passes are marked
+                // because the throw can come from either and there is no telling which after the
+                // fact — over-reporting a failure is the safe direction.
+                failures.Add(new SyncFailureDto(w.Repository.FullName, ex.Message));
+
+                if (w.RefreshCommits)
+                    commitsFailed = true;
+
+                if (w.RefreshPulls)
+                    pullsFailed = true;
             }
         }
 
@@ -186,11 +238,22 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
         var transitions = await _mergeTransitions.ApplyAsync(
             companyId, actorUsername, linkedRepositoryIds, cancellationToken);
 
+        // Named, because a positional record of two bools and a date per pass is a transposition
+        // waiting to happen.
         return Result<TaskActivityRefreshDto>.Success(new TaskActivityRefreshDto(
             Refreshed: refreshed > 0,
             RepositoriesRefreshed: refreshed,
             TasksTransitioned: transitions.Value?.Transitioned ?? 0,
-            LastSyncedAtUtc: LastStamp(repositories)));
+            LastSyncedAtUtc: LastStamp(repositories),
+            Commits: new RefreshPassDto(
+                Attempted: commitsAttempted,
+                Succeeded: commitsAttempted && !commitsFailed,
+                RefreshedAtUtc: OldestStamp(repositories, r => r.CommitsRefreshedAtUtc)),
+            PullRequests: new RefreshPassDto(
+                Attempted: pullsAttempted,
+                Succeeded: pullsAttempted && !pullsFailed,
+                RefreshedAtUtc: OldestStamp(repositories, r => r.PullRequestsRefreshedAtUtc)),
+            Failures: failures));
     }
 
     /// <summary>
@@ -208,6 +271,36 @@ public class TaskActivityRefreshService : ITaskActivityRefreshService
     /// "Last synced" label from the same rule over the same repository stamp columns — the two
     /// must never disagree.
     /// </summary>
+    /// <summary>
+    /// Nothing was fetched, and nothing failed: no project, no linked repositories, or every
+    /// repository inside both cooldowns. Stamps are whatever the columns already held, so the
+    /// panel can still say when each pass last succeeded.
+    /// </summary>
+    private static TaskActivityRefreshDto Quiet(
+        DateTime? lastSynced, DateTime? commitsStamp, DateTime? pullsStamp) =>
+        new(
+            Refreshed: false,
+            RepositoriesRefreshed: 0,
+            TasksTransitioned: 0,
+            LastSyncedAtUtc: lastSynced,
+            Commits: new RefreshPassDto(Attempted: false, Succeeded: false, RefreshedAtUtc: commitsStamp),
+            PullRequests: new RefreshPassDto(Attempted: false, Succeeded: false, RefreshedAtUtc: pullsStamp),
+            Failures: []);
+
+    /// <summary>
+    /// One pass's stamp across the task's repositories, under the same pessimistic rule as
+    /// <see cref="LastStamp"/>: null if any repository has never had that pass succeed, because
+    /// the panel may only claim freshness it can claim for all of them. Null is "unknown", not
+    /// "old" — which is also what a failed pass leaves behind, since it never writes its column.
+    /// </summary>
+    internal static DateTime? OldestStamp(
+        List<GitHubRepository> repositories, Func<GitHubRepository, DateTime?> select)
+    {
+        var stamps = repositories.Select(select).ToList();
+
+        return stamps.Count == 0 || stamps.Any(s => s is null) ? null : stamps.Min();
+    }
+
     internal static DateTime? LastStamp(List<GitHubRepository> repositories)
     {
         var stamps = repositories

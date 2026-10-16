@@ -18,6 +18,7 @@ import { ProjectSprintsComponent } from './company-dashboard/projects/project-sp
 import { AuditDashboardComponent } from './company-dashboard/audit/audit-dashboard.component';
 import { GitHubConnectionComponent } from './company-dashboard/github/github-connection.component';
 import { GitHubCallbackComponent } from './company-dashboard/github/github-callback.component';
+import { MyClaudeComponent } from './settings/my-claude/my-claude.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -36,5 +37,6 @@ export const routes: Routes = [
   { path: 'dashboard/projects/sprints/:projectId', component: ProjectSprintsComponent, canActivate: [companyGuard] },
   { path: 'sprints/:projectId', component: SprintsPageComponent, canActivate: [companyMemberGuard] },
   { path: 'tasks/:projectId', component: TasksPageComponent, canActivate: [companyMemberGuard] },
+  { path: 'settings/claude', component: MyClaudeComponent, canActivate: [companyMemberGuard] },
   { path: '**', redirectTo: '' },
 ];

@@ -264,7 +264,8 @@ public class AccountService : IAccountService
                     Name = u.Name,
                     Email = u.Email ?? "",
                     CompanyId = u.CompanyId,
-                    IsDeleted = u.IsDeleted
+                    IsDeleted = u.IsDeleted,
+                    IsAgent = u.IsAgent
                 })
                 .ToListAsync(ct);
 
@@ -286,6 +287,9 @@ public class AccountService : IAccountService
 
             if (user == null)
                 return Result<UserDto>.Failure("User not found.");
+
+            if (user.IsAgent)
+                return Result<UserDto>.Failure("A Claude is managed from its owner's My Claude page, not edited here.");
 
             user.Name = dto.Name.Trim();
             user.Email = dto.Email.Trim();

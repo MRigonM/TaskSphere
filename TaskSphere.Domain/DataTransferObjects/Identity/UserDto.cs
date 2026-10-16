@@ -7,4 +7,5 @@ public class UserDto
     public string Email { get; set; } = string.Empty;
     public Guid? CompanyId { get; set; }
     public bool IsDeleted { get; set; }
+    public bool IsAgent { get; set; }
 }

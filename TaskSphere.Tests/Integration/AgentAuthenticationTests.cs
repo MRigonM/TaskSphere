@@ -60,4 +60,38 @@ public class AgentAuthenticationTests : IAsyncLifetime
         var response = await _host.Http.SendAsync(_host.Get("/rest-probe", _token));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
+
+    [Fact]
+    public async SystemTask.Task Mcp_without_a_token_is_401_with_a_bearer_challenge()
+    {
+        var response = await _host.Http.SendAsync(_host.Initialize(bearer: null));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("Bearer", response.Headers.WwwAuthenticate.ToString());
+    }
+
+    [Fact]
+    public async SystemTask.Task Mcp_with_a_revoked_token_is_401()
+    {
+        var response = await _host.Http.SendAsync(_host.Initialize(_revokedToken));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async SystemTask.Task Mcp_with_a_human_jwt_is_401()
+    {
+        // /mcp is agent-only, so every MCP action's actor is an agent.
+        var response = await _host.Http.SendAsync(_host.Initialize(McpTestHost.CreateJwt(_humanId, _companyId)));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async SystemTask.Task Mcp_with_a_live_token_connects_and_lists_the_tools()
+    {
+        await using var client = await _host.ConnectAsync(_token);
+
+        var tools = await client.ListToolsAsync();
+
+        Assert.Contains(tools, t => t.Name == "list_projects");
+    }
 }

@@ -23,6 +23,7 @@ using TaskSphere.Extensions;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
 using TaskSphere.Infrastructure.Services;
+using TaskSphere.Mcp;
 
 namespace TaskSphere.Tests.Integration;
 
@@ -75,13 +76,13 @@ internal sealed class McpTestHost : IAsyncDisposable
 
         s.AddJwtAuthentication(builder.Configuration);
         s.AddAgentAuthentication();
-        // Task 12 adds: s.AddTaskSphereMcp();
+        s.AddTaskSphereMcp();
 
         var app = builder.Build();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapGet("/rest-probe", () => "ok").RequireAuthorization();
-        // Task 12 adds: app.MapTaskSphereMcp();
+        app.MapTaskSphereMcp();
 
         await app.StartAsync();
         return new McpTestHost(app);

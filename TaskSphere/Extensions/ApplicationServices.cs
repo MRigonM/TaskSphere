@@ -15,6 +15,7 @@ using TaskSphere.Domain.Interfaces;
 using TaskSphere.Filters;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
+using TaskSphere.Mcp;
 using TaskSphere.Infrastructure.Services;
 
 namespace TaskSphere.Extensions;
@@ -67,6 +68,7 @@ public static class ApplicationServices
         services.AddScoped<IAccountVerificationService, AccountVerificationService>();
         services.AddScoped<IAgentService, AgentService>();
         services.AddSingleton(TimeProvider.System);
+        services.AddTaskSphereMcp();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<ISprintService, SprintService>();

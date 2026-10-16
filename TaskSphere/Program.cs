@@ -3,6 +3,7 @@ using FluentValidation.AspNetCore;
 using TaskSphere.Application.Validators.Identity;
 using TaskSphere.Authentication;
 using TaskSphere.Extensions;
+using TaskSphere.Mcp;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,5 +51,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<TaskSphere.Hubs.ChatHub>("/hubs/chat");
+app.MapTaskSphereMcp();
 
 app.Run();

@@ -1,6 +1,7 @@
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using TaskSphere.Application.Validators.Identity;
+using TaskSphere.Authentication;
 using TaskSphere.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<RegisterValidator>();
 
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddAgentAuthentication();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddEndpointsApiExplorer();
 

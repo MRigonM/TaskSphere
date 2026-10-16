@@ -80,4 +80,74 @@ public class McpReadToolTests : IAsyncLifetime
         Assert.Contains("TS — TaskSphere", text);
         Assert.DoesNotContain("OT", text);
     }
+
+    private async Task<string> SeedTaskAsync(string title, string? description = null, string status = TaskStatuses.Open)
+    {
+        using var scope = _host.App.Services.CreateScope();
+        var tasks = scope.ServiceProvider.GetRequiredService<ITaskService>();
+        var created = await tasks.CreateAsync(new CreateTaskDto
+        {
+            ProjectId = _projectId, Title = title, Description = description, Status = status,
+        }, _companyId, _agent.Id, false, default);
+        Assert.True(created.IsSuccess, string.Join(", ", created.Errors.Select(e => e.Description)));
+        return (await tasks.GetByIdAsync(created.Value, _companyId, _agent.Id, false, default)).Value!.Key!;
+    }
+
+    [Fact]
+    public async SystemTask.Task List_tasks_shows_key_status_title_and_assignee()
+    {
+        var key = await SeedTaskAsync("Write the spec");
+
+        var (isError, text) = await Call("list_tasks", new() { ["project"] = "ts" });
+
+        Assert.False(isError);
+        Assert.Contains($"{key} [Open] Write the spec — unassigned", text);
+    }
+
+    [Fact]
+    public async SystemTask.Task List_tasks_filters_by_status()
+    {
+        var done = await SeedTaskAsync("Already shipped", status: TaskStatuses.Done);
+        var open = await SeedTaskAsync("Still open");
+
+        var (_, text) = await Call("list_tasks", new() { ["project"] = "TS", ["status"] = "done" });
+
+        Assert.Contains(done, text);
+        Assert.DoesNotContain(open, text);
+    }
+
+    [Fact]
+    public async SystemTask.Task List_tasks_on_a_project_the_agent_is_not_in_is_a_tool_error()
+    {
+        var (isError, text) = await Call("list_tasks", new() { ["project"] = "OT" });
+
+        Assert.True(isError);
+        Assert.Equal("Not a member of project OT.", text);
+    }
+
+    [Fact]
+    public async SystemTask.Task List_tasks_rejects_an_unknown_scope()
+    {
+        var (isError, _) = await Call("list_tasks", new() { ["project"] = "TS", ["scope"] = "everything" });
+        Assert.True(isError);
+    }
+
+    [Fact]
+    public async SystemTask.Task Get_task_returns_the_full_description()
+    {
+        var key = await SeedTaskAsync("Detailed", description: "Line one.\nLine two.");
+
+        var (isError, text) = await Call("get_task", new() { ["key"] = key.ToLowerInvariant() });
+
+        Assert.False(isError);
+        Assert.Contains(key, text);
+        Assert.Contains("Line one.\nLine two.", text);
+    }
+
+    [Fact]
+    public async SystemTask.Task Get_task_with_an_unknown_key_is_a_tool_error()
+    {
+        var (isError, _) = await Call("get_task", new() { ["key"] = "TS-9999" });
+        Assert.True(isError);
+    }
 }

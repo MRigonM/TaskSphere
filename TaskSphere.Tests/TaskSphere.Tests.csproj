@@ -20,6 +20,12 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Every integration class creates and migrates its own LocalDB database; one per core at
+       once makes LocalDB time out logins, which fails whichever classes lose the race. -->
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\TaskSphere.Domain\TaskSphere.Domain.csproj" />
     <ProjectReference Include="..\TaskSphere.Infrastructure\TaskSphere.Infrastructure.csproj" />

@@ -48,6 +48,20 @@ public class ProjectService : IProjectService
 
         var project = new Project { Name = name, Key = key, CompanyId = companyId };
 
+        // A personal workspace holds exactly one human and their Claude; both join every
+        // project, so neither ever has to be added by hand and both can be assigned.
+        var company = await _unitOfWork.Companies.GetByIdAsync(companyId, ct);
+        if (company is { IsPersonal: true })
+        {
+            var everyone = await _userManager.Users
+                .Where(u => u.CompanyId == companyId)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+
+            foreach (var userId in everyone)
+                project.Members.Add(new Member { UserId = userId });
+        }
+
         await _unitOfWork.Projects.AddAsync(project, ct);
 
         try

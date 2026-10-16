@@ -20,7 +20,8 @@ public static class McpExtensions
             // revoked token stops working on the very next call.
             .WithHttpTransport(options => options.Stateless = true)
             .WithTools<ProjectAndTaskReadTools>()
-            .WithTools<TaskWriteTools>();
+            .WithTools<TaskWriteTools>()
+            .WithTools<SprintTools>();
 
         return services;
     }

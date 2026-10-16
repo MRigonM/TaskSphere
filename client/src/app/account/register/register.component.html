@@ -3,7 +3,7 @@
     <div class="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-sm backdrop-blur">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight">Create your company account</h1>
+          <h1 class="text-2xl font-semibold tracking-tight">{{ personal ? 'Create your personal account' : 'Create your company account' }}</h1>
           <p class="mt-1 text-sm text-slate-300">
             Join <span class="text-slate-100 font-medium">TaskSphere</span> and start organizing work.
           </p>
@@ -14,6 +14,23 @@
         </div>
       </div>
       <form [formGroup]="form" (ngSubmit)="submit()" class="mt-6 space-y-4">
+        <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Account kind">
+          <button type="button" role="radio" [attr.aria-checked]="!personal" (click)="choose(false)"
+            class="rounded-xl border px-4 py-3 text-sm transition"
+            [ngClass]="!personal ? 'border-indigo-400/60 bg-indigo-500/15 text-white' : 'border-white/10 bg-white/5 text-slate-300'">
+            Company
+          </button>
+          <button type="button" role="radio" [attr.aria-checked]="personal" (click)="choose(true)"
+            class="rounded-xl border px-4 py-3 text-sm transition"
+            [ngClass]="personal ? 'border-indigo-400/60 bg-indigo-500/15 text-white' : 'border-white/10 bg-white/5 text-slate-300'">
+            Personal
+          </button>
+        </div>
+        <p class="text-xs text-slate-400">
+          {{ personal
+            ? 'A workspace for just you and your Claude. No other members can be invited.'
+            : 'A workspace for a team. You can invite members and give each of them a Claude.' }}
+        </p>
         <div>
           <label class="block text-sm font-medium text-slate-200">Full name</label>
           <div class="mt-2">

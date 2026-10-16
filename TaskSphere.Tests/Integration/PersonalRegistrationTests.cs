@@ -81,4 +81,21 @@ public class PersonalRegistrationTests : IAsyncLifetime
         Assert.True(login.IsSuccess);
         Assert.Equal(personal, login.Value!.IsPersonal);
     }
+
+    [Fact]
+    public async SystemTask.Task CreateUser_is_forbidden_in_a_personal_workspace_and_creates_nobody()
+    {
+        await using var db = NewContext();
+        var harness = new RegistrationHarness(db, new CapturingEmailSender());
+        await harness.Accounts.RegisterAsync(Register("only-me@example.com", personal: true));
+        var owner = await harness.Users.FindByEmailAsync("only-me@example.com");
+
+        var result = await harness.Accounts.CreateUserForCompanyAsync(
+            new InviteUserDto { Name = "Intruder", Email = "intruder@example.com" }, owner!.CompanyId!.Value);
+
+        Assert.False(result.IsSuccess);
+        // Auth.Forbidden, so ApiBaseController maps it to 403 rather than 400.
+        Assert.Contains(result.Errors, e => e.Code == "Auth.Forbidden");
+        Assert.Null(await harness.Users.FindByEmailAsync("intruder@example.com"));
+    }
 }

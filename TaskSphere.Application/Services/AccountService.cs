@@ -183,6 +183,11 @@ public class AccountService : IAccountService
     {
         try
         {
+            var workspace = await _companyService.GetByIdAsync(companyId, ct);
+            if (workspace.IsSuccess && workspace.Value!.IsPersonal)
+                return Result<string>.Failure(new Error(
+                    "Auth.Forbidden", "A personal workspace has only you in it, so members cannot be invited."));
+
             var user = new AppUser
             {
                 UserName = dto.Email,
@@ -206,7 +211,7 @@ public class AccountService : IAccountService
 
             await _userManager.AddToRoleAsync(user, Roles.User);
 
-            var company = await _companyService.GetByIdAsync(companyId, ct);
+            var company = workspace;
             var companyName = company.IsSuccess ? company.Value!.Name : "Your team";
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);

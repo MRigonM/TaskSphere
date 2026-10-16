@@ -34,7 +34,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerDocumentation();
 }
 
-app.UseHttpsRedirection();
+// Claude Code's TLS stack rejects the self-signed ASP.NET dev certificate, so in Development
+// /mcp is also served on plain http://localhost:5000. Outside Development every request,
+// /mcp included, is redirected to HTTPS as before.
+app.UseWhen(
+    context => !(app.Environment.IsDevelopment() && context.Request.Path.StartsWithSegments("/mcp")),
+    branch => branch.UseHttpsRedirection());
 
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(uploadsPath);

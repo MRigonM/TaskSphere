@@ -9,6 +9,7 @@ public static class McpExtensions
     public static IServiceCollection AddTaskSphereMcp(this IServiceCollection services)
     {
         services.AddScoped<McpLookups>();
+        services.AddScoped<McpAudit>();
 
         services.AddMcpServer(options =>
             {
@@ -18,7 +19,8 @@ public static class McpExtensions
             // Stateless: no server-side session, so the caller's principal is per request and a
             // revoked token stops working on the very next call.
             .WithHttpTransport(options => options.Stateless = true)
-            .WithTools<ProjectAndTaskReadTools>();
+            .WithTools<ProjectAndTaskReadTools>()
+            .WithTools<TaskWriteTools>();
 
         return services;
     }

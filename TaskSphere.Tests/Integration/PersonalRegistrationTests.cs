@@ -62,4 +62,23 @@ public class PersonalRegistrationTests : IAsyncLifetime
         Assert.False((await db.Companies.SingleAsync(c => c.Id == human!.CompanyId)).IsPersonal);
         Assert.False(await db.Users.AnyAsync(u => u.OwnerUserId == human!.Id));
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async SystemTask.Task Login_reports_whether_the_workspace_is_personal(bool personal)
+    {
+        await using var db = NewContext();
+        var harness = new RegistrationHarness(db, new CapturingEmailSender());
+        var email = $"login-{personal}@example.com".ToLowerInvariant();
+        await harness.Accounts.RegisterAsync(Register(email, personal));
+
+        var user = await harness.Users.FindByEmailAsync(email);
+        await harness.Users.ConfirmEmailAsync(user!, await harness.Users.GenerateEmailConfirmationTokenAsync(user!));
+
+        var login = await harness.Accounts.LoginAsync(new LoginDto { Email = email, Password = "Str0ng!Password" });
+
+        Assert.True(login.IsSuccess);
+        Assert.Equal(personal, login.Value!.IsPersonal);
+    }
 }

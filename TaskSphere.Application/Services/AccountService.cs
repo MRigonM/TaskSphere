@@ -78,6 +78,13 @@ public class AccountService : IAccountService
 
             var token = GenerateJwtToken(user, role);
 
+            var isPersonal = false;
+            if (user.CompanyId.HasValue)
+            {
+                var company = await _companyService.GetByIdAsync(user.CompanyId.Value, cancellationToken);
+                isPersonal = company.IsSuccess && company.Value!.IsPersonal;
+            }
+
             return Result<AuthResponseDto>.Success(new AuthResponseDto
             {
                 Token = token,
@@ -85,7 +92,8 @@ public class AccountService : IAccountService
                 Email = user.Email ?? string.Empty,
                 Name = user.Name,
                 Role = role,
-                CompanyId = user.CompanyId
+                CompanyId = user.CompanyId,
+                IsPersonal = isPersonal
             });
         }
         catch (Exception ex)

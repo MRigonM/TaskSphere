@@ -65,6 +65,8 @@ public static class ApplicationServices
 
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IAccountVerificationService, AccountVerificationService>();
+        services.AddScoped<IAgentService, AgentService>();
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<ISprintService, SprintService>();

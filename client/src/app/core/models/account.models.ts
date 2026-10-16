@@ -3,6 +3,7 @@
   email: string;
   password: string;
   confirmPassword: string;
+  isPersonal: boolean;
 }
 
 export interface LoginDto {
@@ -17,6 +18,7 @@ export interface AuthResponseDto {
   email: string;
   role: string;
   companyId?: string | null;
+  isPersonal?: boolean;
 }
 
 export interface UserDto {
@@ -25,6 +27,7 @@ export interface UserDto {
   email: string;
   companyId?: string | null;
   isDeleted: boolean;
+  isAgent?: boolean;
 }
 
 export interface UpdateUserDto {

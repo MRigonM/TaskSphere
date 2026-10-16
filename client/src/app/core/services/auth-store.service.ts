@@ -54,4 +54,9 @@ export class AuthStoreService {
     const role = this.getRole()?.toLowerCase();
     return role === 'company' || role === 'user';
   }
+
+  /** One human and their Claude. Stored auth from before this flag existed reads as false. */
+  isPersonal(): boolean {
+    return !!this._auth()?.isPersonal;
+  }
 }

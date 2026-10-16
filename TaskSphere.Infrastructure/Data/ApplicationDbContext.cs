@@ -45,6 +45,7 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
     public DbSet<GitHubPullRequest> GitHubPullRequests { get; set; }
     public DbSet<GitHubBranchCommit> GitHubBranchCommits { get; set; }
     public DbSet<TaskLink> TaskLinks { get; set; }
+    public DbSet<AgentToken> AgentTokens { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -62,6 +63,17 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
                 .WithMany(c => c.Users)
                 .HasForeignKey(u => u.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(u => u.Owner)
+                .WithMany()
+                .HasForeignKey(u => u.OwnerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // At most one agent per human, soft-deleted ones included: re-creating an agent
+            // revives the old row instead of inserting a second.
+            entity.HasIndex(u => u.OwnerUserId)
+                .IsUnique()
+                .HasFilter("[OwnerUserId] IS NOT NULL");
         });
 
         modelBuilder.Entity<Company>(entity =>
@@ -228,6 +240,29 @@ public class ApplicationDbContext : IdentityDbContext<AppUser>
         modelBuilder.Entity<AuditLog>(entity =>
         {
             entity.HasIndex(a => a.CompanyId);
+        });
+
+        modelBuilder.Entity<AgentToken>(entity =>
+        {
+            // Mirrors AppUser's filter, so a soft-deleted agent's tokens vanish with it.
+            entity.HasQueryFilter(t => !t.Agent.IsDeleted);
+
+            entity.Property(t => t.TokenHash).HasMaxLength(32).IsFixedLength();
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+
+            entity.Property(t => t.Prefix).HasMaxLength(12);
+
+            // One live token per agent. This index is what turns a racing second regenerate
+            // into a DbUpdateException instead of two valid tokens.
+            entity.HasIndex(t => t.AgentUserId)
+                .IsUnique()
+                .HasFilter("[RevokedAtUtc] IS NULL")
+                .HasDatabaseName("IX_AgentTokens_AgentUserId_Live");
+
+            entity.HasOne(t => t.Agent)
+                .WithMany()
+                .HasForeignKey(t => t.AgentUserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<GitHubInstallation>(entity =>

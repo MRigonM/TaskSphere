@@ -67,6 +67,9 @@ public class UnitOfWork : IUnitOfWork
     private IGenericRepository<ChatMessage, int>? _chatMessages;
     public IGenericRepository<ChatMessage, int> ChatMessages =>
         _chatMessages ??= new GenericRepository<ChatMessage, int>(_context);
+
+    private IAgentTokenRepository? _agentTokens;
+    public IAgentTokenRepository AgentTokens => _agentTokens ??= new AgentTokenRepository(_context);
     
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken) => 
         await _context.SaveChangesAsync(cancellationToken);

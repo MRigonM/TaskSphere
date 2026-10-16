@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../core/http/api-error';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { ToastService } from '../../core/services/toast.service';
+import { AuthStoreService } from '../../core/services/auth-store.service';
 
 import { UserDto, UserQueryDto } from '../../core/models/account.models';
 import { AddMemberDto, MemberDto, ProjectDto } from '../../core/models/projects.models';
@@ -36,6 +37,7 @@ export class ProjectPageComponent {
     private projectsApi: ProjectsApiService,
     private accountApi: AccountApiService,
     private toast: ToastService,
+    public auth: AuthStoreService,
   ) {}
 
   ngOnInit() {

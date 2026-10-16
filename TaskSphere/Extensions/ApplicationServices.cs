@@ -7,6 +7,7 @@ using TaskSphere.Infrastructure.Services;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Application.Mappings;
 using TaskSphere.Application.Services;
+using TaskSphere.Application.Settings;
 using TaskSphere.Auditing;
 using TaskSphere.Domain.Audit;
 using TaskSphere.Domain.Entities.Identity;
@@ -14,6 +15,7 @@ using TaskSphere.Domain.Interfaces;
 using TaskSphere.Filters;
 using TaskSphere.Infrastructure.Data;
 using TaskSphere.Infrastructure.Repositories;
+using TaskSphere.Mcp;
 using TaskSphere.Infrastructure.Services;
 
 namespace TaskSphere.Extensions;
@@ -63,6 +65,10 @@ public static class ApplicationServices
         services.AddScoped<ITaskNumberAllocator, TaskNumberAllocator>();
 
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IAccountVerificationService, AccountVerificationService>();
+        services.AddScoped<IAgentService, AgentService>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddTaskSphereMcp();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<ISprintService, SprintService>();
@@ -79,6 +85,11 @@ public static class ApplicationServices
         services.AddHostedService<AuditWriterService>();
 
         services.AddHostedService<TaskSphere.Startup.TaskKeyBackfillService>();
+
+        //Mail
+        services.Configure<MailOptions>(configuration.GetSection(MailOptions.SectionName));
+        services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.Configure<ClientOptions>(configuration.GetSection(ClientOptions.SectionName));
 
         //GitHub
         services.AddMemoryCache();

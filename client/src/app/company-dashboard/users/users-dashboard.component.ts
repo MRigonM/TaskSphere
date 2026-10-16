@@ -5,7 +5,7 @@ import { catchError, finalize, of, switchMap, tap } from 'rxjs';
 
 import { apiErrorMessage } from '../../core/http/api-error';
 import { AccountApiService } from '../../core/services/account-api.service';
-import { RegisterDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/models/account.models';
+import { InviteUserDto, UpdateUserDto, UserDto, UserQueryDto } from '../../core/models/account.models';
 import { ToastService } from '../../core/services/toast.service';
 
 @Component({
@@ -54,9 +54,6 @@ export class UsersDashboardComponent {
   userForm = this.fb.nonNullable.group({
     name: ['', [Validators.required, Validators.minLength(2)]],
     email: ['', [Validators.required, Validators.email]],
-
-    password: [''],
-    confirmPassword: [''],
 
     newPassword: [''],
     confirmNewPassword: [''],
@@ -128,8 +125,6 @@ export class UsersDashboardComponent {
     this.userForm.reset({
       name: '',
       email: '',
-      password: '',
-      confirmPassword: '',
       newPassword: '',
       confirmNewPassword: '',
     });
@@ -145,8 +140,6 @@ export class UsersDashboardComponent {
     this.userForm.reset({
       name: u.name ?? '',
       email: u.email ?? '',
-      password: '',
-      confirmPassword: '',
       newPassword: '',
       confirmNewPassword: '',
     });
@@ -178,23 +171,9 @@ export class UsersDashboardComponent {
     }
 
     if (this.modalMode() === 'create') {
-      const pw = (this.userForm.value.password ?? '').trim();
-      const cpw = (this.userForm.value.confirmPassword ?? '').trim();
-
-      if (pw.length < 6) {
-        this.error.set('Password must be at least 8 characters.');
-        return;
-      }
-      if (pw !== cpw) {
-        this.error.set('Password and confirm password do not match.');
-        return;
-      }
-
-      const dto: RegisterDto = {
+      const dto: InviteUserDto = {
         name: this.userForm.value.name!,
         email: this.userForm.value.email!,
-        password: pw,
-        confirmPassword: cpw,
       };
 
       this.loading.set(true);
@@ -206,7 +185,7 @@ export class UsersDashboardComponent {
           tap(() => {
             this.closeModal();
             this.load();
-            this.toast.show('User was created');
+            this.toast.show('Member added — they have been emailed a link to set their password');
           }),
           catchError((err) => {
             this.error.set(apiErrorMessage(err, 'Failed to create user.'));

@@ -189,6 +189,31 @@ public class GitHubActivitySyncTests : IAsyncLifetime
             => throw new NotSupportedException($"The activity sync must never POST. It attempted {url}.");
     }
 
+    /// <summary>
+    /// The sync window is 30 days wide and is measured from <c>DateTime.UtcNow</c>, and
+    /// GitHubPullRequestMirror BREAKS at the first pull request older than it. A fixture pinned to
+    /// an absolute date therefore leaves the window as real time passes, with no code change:
+    /// the August 2026 literals these replaced expired on 2026-09-10/11 and took seven tests red,
+    /// plus two that went vacuous rather than red. Anchor every pull-request timestamp to now.
+    ///
+    /// Truncated to whole seconds because the wire format carries no sub-second component, so an
+    /// untruncated anchor would not round-trip through the equality assertions below.
+    /// </summary>
+    private static readonly DateTime PullOpened = TruncateToSecond(DateTime.UtcNow.AddDays(-12));
+    private static readonly DateTime PullMerged = TruncateToSecond(DateTime.UtcNow.AddDays(-3));
+    private static readonly DateTime PullUpdated = TruncateToSecond(DateTime.UtcNow.AddDays(-2));
+    private static readonly DateTime PullUpdatedLater = TruncateToSecond(DateTime.UtcNow.AddDays(-1));
+
+    private static DateTime TruncateToSecond(DateTime value)
+        => new(value.Year, value.Month, value.Day, value.Hour, value.Minute, value.Second);
+
+    /// <summary>
+    /// InvariantCulture, not the ambient one: ':' in a custom format string is the culture's TIME
+    /// SEPARATOR, so this emits "10.00.00Z" under fi-FI. Same trap GitHubCommitMirror documents.
+    /// </summary>
+    private static string Iso(DateTime value)
+        => value.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
+
     private static string Branches(params (string Name, string Sha)[] branches)
         => "[" + string.Join(",", branches.Select(b =>
             $"{{\"name\":\"{b.Name}\",\"commit\":{{\"sha\":\"{b.Sha}\"}}}}")) + "]";
@@ -210,7 +235,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
              "state":"{{p.State}}",
              "user":{"login":"MRigonM"},
              "head":{"ref":"TS-42-fix"},
-             "created_at":"2026-08-01T09:00:00Z",
+             "created_at":"{{Iso(PullOpened)}}",
              "updated_at":"{{p.UpdatedAt}}",
              "merged_at":{{(p.MergedAt is null ? "null" : $"\"{p.MergedAt}\"")}},
              "html_url":"https://github.com/rigon-org/api/pull/{{p.Number}}"}
@@ -1136,7 +1161,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
             .On("/commits", Commits(("1111111111111111111111111111111111111111", "TS-42 wire it", "MRigonM")))
-            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, Iso(PullUpdated))));
 
         var before = DateTime.UtcNow;
         await Sync(api);
@@ -1156,7 +1181,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
             .Fail("/commits", new Error("GitHub.RateLimited", "Rate limit exceeded."))
-            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 add the endpoint", null, "open", null, Iso(PullUpdated))));
 
         await Sync(api);
 
@@ -1294,7 +1319,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, Iso(PullUpdated))));
 
         await Sync(api);
 
@@ -1311,11 +1336,11 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
             .On("/pulls", Pulls(
-                (17, "TS-42 open one", null, "open", null, "2026-08-11T10:00:00Z"),
-                (18, "TS-42 closed one", null, "closed", null, "2026-08-11T10:00:00Z"),
+                (17, "TS-42 open one", null, "open", null, Iso(PullUpdated)),
+                (18, "TS-42 closed one", null, "closed", null, Iso(PullUpdated)),
                 // GitHub reports a merged PR as state "closed" with a merged_at timestamp.
                 // Reading state alone would call every merged PR closed.
-                (19, "TS-42 merged one", null, "closed", "2026-08-10T12:00:00Z", "2026-08-11T10:00:00Z")));
+                (19, "TS-42 merged one", null, "closed", Iso(PullMerged), Iso(PullUpdated))));
 
         var result = await Sync(api);
 
@@ -1327,7 +1352,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         Assert.Equal(PullRequestState.Open, pulls[0].State);
         Assert.Equal(PullRequestState.Closed, pulls[1].State);
         Assert.Equal(PullRequestState.Merged, pulls[2].State);
-        Assert.Equal(new DateTime(2026, 8, 10, 12, 0, 0), pulls[2].MergedAtUtc);
+        Assert.Equal(PullMerged, pulls[2].MergedAtUtc);
         Assert.Null(pulls[0].MergedAtUtc);
     }
 
@@ -1359,11 +1384,11 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         var open = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, Iso(PullUpdated))));
 
         var merged = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", "2026-08-12T08:00:00Z", "2026-08-12T08:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", Iso(PullUpdatedLater), Iso(PullUpdatedLater))));
 
         await Sync(open);
         await Sync(merged);
@@ -1382,7 +1407,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", "Closes it.", "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", "Closes it.", "open", null, Iso(PullUpdated))));
 
         await Sync(api);
 
@@ -1550,7 +1575,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, Iso(PullUpdated))));
 
         var result = await Sync(api);
 
@@ -1562,19 +1587,19 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     public async SystemTask.Task OpenedAtUtc_IsTheCreationTimestamp_NotTheUpdateTimestamp()
     {
         // The read orders the panel by OpenedAtUtc, so filling it from updated_at would reorder
-        // a task's pull requests every time one of them was touched. The helper's created_at is
-        // 2026-08-01; updated_at here is ten days later, so the two are distinguishable.
+        // a task's pull requests every time one of them was touched. PullOpened is ten days
+        // earlier than PullUpdated, so the two are distinguishable.
         var api = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, Iso(PullUpdated))));
 
         await Sync(api);
 
         await using var db = NewContext();
         var pull = await db.GitHubPullRequests.SingleAsync();
 
-        Assert.Equal(new DateTime(2026, 8, 1, 9, 0, 0), pull.OpenedAtUtc);
-        Assert.Equal(new DateTime(2026, 8, 11, 10, 0, 0), pull.GitHubUpdatedAtUtc);
+        Assert.Equal(PullOpened, pull.OpenedAtUtc);
+        Assert.Equal(PullUpdated, pull.GitHubUpdatedAtUtc);
     }
 
     [Fact]
@@ -1585,7 +1610,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // index it collides with. Same failure the branches path was fixed for.
         var first = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, "2026-08-11T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "open", null, Iso(PullUpdated))));
 
         await Sync(first);
 
@@ -1599,7 +1624,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
 
         var second = new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
-            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", null, "2026-08-12T10:00:00Z")));
+            .On("/pulls", Pulls((17, "TS-42 wire the panel", null, "closed", null, Iso(PullUpdatedLater))));
 
         await Sync(second);
 
@@ -1620,7 +1645,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
         // updated_at is absent rather than late. Because the scan BREAKS at the first pull
         // request outside the window, reading a missing timestamp as "very old" would not skip
         // one row — it would silently truncate the rest of the listing.
-        var noTimestamp = """[{"number":17,"title":"TS-42 no timestamp","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"TS-42-fix"},"created_at":"2026-08-01T09:00:00Z","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
+        var noTimestamp = $$"""[{"number":17,"title":"TS-42 no timestamp","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"TS-42-fix"},"created_at":"{{Iso(PullOpened)}}","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
 
         var result = await Sync(new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))
@@ -1637,7 +1662,7 @@ public class GitHubActivitySyncTests : IAsyncLifetime
     {
         // "Everything mutable is overwritten" is the stated contract of the update block, and
         // the shared Pulls helper hardcodes one head ref, so nothing varied it.
-        static string PullWithHead(string headRef) => $$"""[{"number":17,"title":"TS-42 wire the panel","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"{{headRef}}"},"created_at":"2026-08-01T09:00:00Z","updated_at":"2026-08-11T10:00:00Z","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
+        static string PullWithHead(string headRef) => $$"""[{"number":17,"title":"TS-42 wire the panel","body":null,"state":"open","user":{"login":"MRigonM"},"head":{"ref":"{{headRef}}"},"created_at":"{{Iso(PullOpened)}}","updated_at":"{{Iso(PullUpdated)}}","merged_at":null,"html_url":"https://github.com/rigon-org/api/pull/17"}]""";
 
         await Sync(new FakeApiClient()
             .On("/branches", Branches(("main", "aaa")))

@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using TaskSphere.Application.Interfaces;
+using TaskSphere.Application.Settings;
 using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.Company;
 using TaskSphere.Domain.DataTransferObjects.Identity;
@@ -24,6 +26,10 @@ public class AccountService : IAccountService
     private readonly IConfiguration _configuration;
     private readonly ILogger<AccountService> _logger;
     private readonly ICompanyService _companyService;
+    private readonly IAccountVerificationService _verification;
+    private readonly IEmailSender _emailSender;
+    private readonly ClientOptions _client;
+    private readonly IAgentService _agents;
 
     public AccountService(
         UserManager<AppUser> userManager,
@@ -31,7 +37,11 @@ public class AccountService : IAccountService
         RoleManager<IdentityRole> roleManager,
         IConfiguration configuration,
         ILogger<AccountService> logger,
-        ICompanyService companyService)
+        ICompanyService companyService,
+        IAccountVerificationService verification,
+        IEmailSender emailSender,
+        IOptions<ClientOptions> client,
+        IAgentService agents)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -39,6 +49,10 @@ public class AccountService : IAccountService
         _configuration = configuration;
         _logger = logger;
         _companyService = companyService;
+        _verification = verification;
+        _emailSender = emailSender;
+        _client = client.Value;
+        _agents = agents;
     }
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
     {
@@ -52,10 +66,24 @@ public class AccountService : IAccountService
             if (!result.Succeeded)
                 return Result<AuthResponseDto>.Failure("Invalid email or password.");
 
+            // After the password check, never before: an unverified-account answer returned for a
+            // password nobody guessed would tell an outsider which addresses are registered.
+            if (!user.EmailConfirmed)
+                return Result<AuthResponseDto>.Failure(new Error(
+                    "Auth.EmailNotConfirmed",
+                    "Confirm your email address before logging in."));
+
             var roles = await _userManager.GetRolesAsync(user);
             var role = roles.FirstOrDefault() ?? Roles.User;
 
             var token = GenerateJwtToken(user, role);
+
+            var isPersonal = false;
+            if (user.CompanyId.HasValue)
+            {
+                var company = await _companyService.GetByIdAsync(user.CompanyId.Value, cancellationToken);
+                isPersonal = company.IsSuccess && company.Value!.IsPersonal;
+            }
 
             return Result<AuthResponseDto>.Success(new AuthResponseDto
             {
@@ -64,7 +92,8 @@ public class AccountService : IAccountService
                 Email = user.Email ?? string.Empty,
                 Name = user.Name,
                 Role = role,
-                CompanyId = user.CompanyId
+                CompanyId = user.CompanyId,
+                IsPersonal = isPersonal
             });
         }
         catch (Exception ex)
@@ -100,7 +129,8 @@ public class AccountService : IAccountService
             if (!await _roleManager.RoleExistsAsync(Roles.Company))
                 await _roleManager.CreateAsync(new IdentityRole(Roles.Company));
 
-            var companyResult = await _companyService.CreateAsync(new CompanyDto { Name = dto.Name }, cancellationToken);
+            var companyResult = await _companyService.CreateAsync(
+                new CompanyDto { Name = dto.Name, IsPersonal = dto.IsPersonal }, cancellationToken);
             if (!companyResult.IsSuccess || companyResult.Value == null)
             {
                 _logger.LogWarning("Identity created but Company entity failed for {Email}", dto.Email);
@@ -120,8 +150,27 @@ public class AccountService : IAccountService
 
             await _userManager.AddToRoleAsync(user, Roles.Company);
 
+            if (dto.IsPersonal)
+            {
+                var agent = await _agents.CreateForOwnerAsync(user.Id, cancellationToken);
+                if (!agent.IsSuccess)
+                {
+                    // Same compensation as the steps above. The company row is left behind, as
+                    // it is when the link step fails; registration is not transactional.
+                    _logger.LogWarning("Personal registration could not create the agent for {Email}", dto.Email);
+                    await _userManager.DeleteAsync(user);
+                    return Result<string>.Failure("Could not set up your Claude. Please try again.");
+                }
+            }
+
             _logger.LogInformation("Successfully registered Company with UserId: {UserId}, CompanyId: {CompanyId}", user.Id, user.CompanyId);
-            return Result<string>.Success("Company registered successfully.");
+            // The account is kept whatever happens to the mail: a transient SMTP failure must not
+            // destroy a company that was created correctly.
+            var sent = await _verification.SendVerificationAsync(user.Email!, cancellationToken);
+
+            return Result<string>.Success(sent.IsSuccess
+                ? "Account created. Check your email to verify your address."
+                : "Account created, but the verification email could not be sent. Use Resend on the login page.");
         }
         catch (Exception ex)
         {
@@ -130,10 +179,15 @@ public class AccountService : IAccountService
         }
     }
     
-    public async Task<Result<string>> CreateUserForCompanyAsync(RegisterDto dto, Guid companyId, CancellationToken ct = default)
+    public async Task<Result<string>> CreateUserForCompanyAsync(InviteUserDto dto, Guid companyId, CancellationToken ct = default)
     {
         try
         {
+            var workspace = await _companyService.GetByIdAsync(companyId, ct);
+            if (workspace.IsSuccess && workspace.Value!.IsPersonal)
+                return Result<string>.Failure(new Error(
+                    "Auth.Forbidden", "A personal workspace has only you in it, so members cannot be invited."));
+
             var user = new AppUser
             {
                 UserName = dto.Email,
@@ -141,11 +195,11 @@ public class AccountService : IAccountService
                 Name = dto.Name,
                 CompanyId = companyId
             };
-            
-            if (dto.Password != dto.ConfirmPassword)
-                return Result<string>.Failure("Passwords do not match.");
-    
-            var result = await _userManager.CreateAsync(user, dto.Password);
+
+            // No password: the member chooses their own through the invitation link. An admin who
+            // picks a password for someone else has to transmit it somehow, and every way of
+            // doing that is worse than a link.
+            var result = await _userManager.CreateAsync(user);
             if (!result.Succeeded)
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
@@ -157,7 +211,18 @@ public class AccountService : IAccountService
 
             await _userManager.AddToRoleAsync(user, Roles.User);
 
-            return Result<string>.Success("User created successfully.");
+            var company = workspace;
+            var companyName = company.IsSuccess ? company.Value!.Name : "Your team";
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var link = AccountEmails.AcceptInviteLink(_client.BaseUrl, dto.Email, token);
+            var (subject, body) = AccountEmails.Invitation(companyName, link);
+
+            var sent = await _emailSender.SendAsync(dto.Email, subject, body, ct);
+
+            return Result<string>.Success(sent.IsSuccess
+                ? "Member added. They have been emailed a link to set their password."
+                : "Member added, but the invitation email could not be sent.");
         }
         catch (Exception ex)
         {
@@ -199,7 +264,8 @@ public class AccountService : IAccountService
                     Name = u.Name,
                     Email = u.Email ?? "",
                     CompanyId = u.CompanyId,
-                    IsDeleted = u.IsDeleted
+                    IsDeleted = u.IsDeleted,
+                    IsAgent = u.IsAgent
                 })
                 .ToListAsync(ct);
 
@@ -221,6 +287,9 @@ public class AccountService : IAccountService
 
             if (user == null)
                 return Result<UserDto>.Failure("User not found.");
+
+            if (user.IsAgent)
+                return Result<UserDto>.Failure("A Claude is managed from its owner's My Claude page, not edited here.");
 
             user.Name = dto.Name.Trim();
             user.Email = dto.Email.Trim();

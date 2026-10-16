@@ -27,7 +27,16 @@ export class RegisterComponent {
       email: ['', [Validators.required, Validators.pattern(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/)]],
       password: ['', [Validators.required]],
       confirmPassword: ['', [Validators.required]],
+      isPersonal: [false],
     });
+  }
+
+  choose(personal: boolean) {
+    this.form.patchValue({ isPersonal: personal });
+  }
+
+  get personal(): boolean {
+    return !!this.form.get('isPersonal')?.value;
   }
 
 

@@ -1,9 +1,16 @@
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using TaskSphere.Application.Validators.Identity;
+using TaskSphere.Authentication;
 using TaskSphere.Extensions;
+using TaskSphere.Mcp;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Optional, git-ignored overlay for values that must not reach a public repository — today the
+// Gmail app password and the sending address. Added last so it wins over appsettings.json; it is
+// absent in any deployed environment, which is why overriding environment variables is harmless.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
@@ -14,6 +21,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<RegisterValidator>();
 
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
+builder.Services.AddAgentAuthentication();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -43,5 +51,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<TaskSphere.Hubs.ChatHub>("/hubs/chat");
+app.MapTaskSphereMcp();
 
 app.Run();

@@ -5,6 +5,7 @@ using TaskSphere.Domain.Common;
 using TaskSphere.Domain.DataTransferObjects.Project;
 using TaskSphere.Domain.Entities;
 using TaskSphere.Domain.Entities.Identity;
+using TaskSphere.Domain.Enums;
 using TaskSphere.Domain.Interfaces;
 
 namespace TaskSphere.Application.Services;
@@ -47,6 +48,20 @@ public class ProjectService : IProjectService
             return Result<ProjectDto>.Failure("Project key already in use.");
 
         var project = new Project { Name = name, Key = key, CompanyId = companyId };
+
+        // A personal workspace holds exactly one human and their Claude; both join every
+        // project, so neither ever has to be added by hand and both can be assigned.
+        var company = await _unitOfWork.Companies.GetByIdAsync(companyId, ct);
+        if (company is { IsPersonal: true })
+        {
+            var everyone = await _userManager.Users
+                .Where(u => u.CompanyId == companyId)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+
+            foreach (var userId in everyone)
+                project.Members.Add(new Member { UserId = userId });
+        }
 
         await _unitOfWork.Projects.AddAsync(project, ct);
 
@@ -159,6 +174,21 @@ public class ProjectService : IProjectService
         if (user == null)
             return Result<string>.Failure("User not found in your company.");
 
+        if (user.IsAgent)
+        {
+            var owner = await _userManager.Users.FirstOrDefaultAsync(u => u.Id == user.OwnerUserId, ct);
+            if (owner is null)
+                return Result<string>.Failure("This Claude's owner no longer exists.");
+
+            var ownerIsAdmin = await _userManager.IsInRoleAsync(owner, Roles.Company);
+            var ownerIsMember = await _unitOfWork.Members.GetAll()
+                .AnyAsync(m => m.ProjectId == projectId && m.UserId == owner.Id, ct);
+
+            if (!ownerIsAdmin && !ownerIsMember)
+                return Result<string>.Failure(new Error(
+                    "Validation", $"{user.Name} can only join projects its owner is a member of."));
+        }
+
         var existing = await _unitOfWork.Members.GetByProjectAndUserIncludingDeletedAsync(projectId, userId, ct);
 
         if (existing != null)
@@ -199,6 +229,19 @@ public class ProjectService : IProjectService
         member.DeletedAt = DateTimeOffset.UtcNow;
 
         await _unitOfWork.Members.Update(member, ct);
+
+        // The owner's Claude leaves with them. IgnoreQueryFilters so a soft-deleted agent's row
+        // is caught too — otherwise reviving that agent later would hand it this project back.
+        var agentMember = await _unitOfWork.Members.GetAll()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => !m.IsDeleted && m.ProjectId == projectId && m.User.OwnerUserId == userId, ct);
+
+        if (agentMember is not null)
+        {
+            agentMember.IsDeleted = true;
+            agentMember.DeletedAt = DateTimeOffset.UtcNow;
+            await _unitOfWork.Members.Update(agentMember, ct);
+        }
 
         var saved = await _unitOfWork.SaveChangesAsync(ct) > 0;
         if (!saved)

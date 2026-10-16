@@ -54,7 +54,7 @@
             role="menu"
           >
             <a
-              *ngIf="auth.isCompany()"
+              *ngIf="auth.isCompany() && !auth.isPersonal()"
               routerLink="/dashboard/users"
               (click)="closeMenu()"
               class="block px-3 py-2 text-sm text-slate-200 hover:bg-white/5 transition"
@@ -79,6 +79,15 @@
               role="menuitem"
             >
               GitHub
+            </a>
+            <a
+              *ngIf="auth.isCompanyMember()"
+              routerLink="/settings/claude"
+              (click)="closeMenu()"
+              class="block px-3 py-2 text-sm text-slate-200 hover:bg-white/5 transition"
+              role="menuitem"
+            >
+              My Claude
             </a>
             <a
               *ngIf="auth.isCompanyMember()"

@@ -1,0 +1,49 @@
+<div class="mx-auto max-w-2xl space-y-4 py-8">
+  <h1 class="text-2xl font-semibold tracking-tight text-white">My Claude</h1>
+  <p class="text-sm text-slate-300">
+    Your Claude is a project member that Claude Code acts as. It can create and update tickets and move
+    them through Open, InProgress, Blocked and Done in the projects it belongs to — never more than you can reach.
+  </p>
+
+  <div *ngIf="error()" class="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+    {{ error() }}
+  </div>
+
+  <ng-container *ngIf="status() as s">
+    <div *ngIf="!s.hasAgent" class="rounded-xl border border-white/10 bg-white/5 p-4">
+      <button type="button" (click)="create()" [disabled]="busy()"
+        class="rounded-xl bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50">
+        Create my Claude
+      </button>
+    </div>
+
+    <div *ngIf="s.hasAgent" class="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
+      <div class="text-white font-semibold">{{ s.agentName }}</div>
+
+      <div *ngIf="s.token as t" class="text-sm text-slate-300">
+        Token <code class="text-slate-100">{{ t.prefix }}…</code>,
+        created {{ t.createdAtUtc | date: 'medium' }},
+        last used {{ t.lastUsedAtUtc ? (t.lastUsedAtUtc | date: 'medium') : 'never' }}
+      </div>
+      <div *ngIf="!s.token" class="text-sm text-slate-400">No token yet.</div>
+
+      <div class="flex gap-2">
+        <button type="button" (click)="regenerate()" [disabled]="busy()"
+          class="rounded-xl bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 transition disabled:opacity-50">
+          {{ s.token ? 'Regenerate token' : 'Generate token' }}
+        </button>
+        <button *ngIf="s.token" type="button" (click)="revoke()" [disabled]="busy()"
+          class="rounded-xl border border-rose-500/30 px-4 py-2 text-rose-200 hover:bg-rose-500/10 transition disabled:opacity-50">
+          Revoke
+        </button>
+      </div>
+
+      <div *ngIf="issued() as i" class="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+        <div class="text-sm font-semibold text-amber-100">Copy this now — it will not be shown again.</div>
+        <code class="block break-all text-sm text-white">{{ i.token }}</code>
+        <div class="text-sm text-amber-100">Then run this in your terminal:</div>
+        <code class="block break-all text-sm text-white">{{ command(i.token) }}</code>
+      </div>
+    </div>
+  </ng-container>
+</div>

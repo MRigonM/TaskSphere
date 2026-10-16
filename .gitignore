@@ -488,3 +488,7 @@ docs/
 graphify-out/
 .codegraph/
 .claude/
+
+# Local secret overlay. This repository is public: the Gmail app password and the
+# sending address live here and must never be committed.
+appsettings.Local.json

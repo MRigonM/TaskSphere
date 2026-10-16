@@ -11,10 +11,14 @@ namespace TaskSphere.Controllers;
 public class AccountController : ApiBaseController
 {
     private readonly IAccountService _accountService;
+    private readonly IAccountVerificationService _verificationService;
 
-    public AccountController(IAccountService accountService)
+    public AccountController(
+        IAccountService accountService,
+        IAccountVerificationService verificationService)
     {
         _accountService = accountService;
+        _verificationService = verificationService;
     }
 
     [AllowAnonymous]
@@ -33,11 +37,51 @@ public class AccountController : ApiBaseController
         return FromResult(result);
     }
 
+    [AllowAnonymous]
+    [HttpPost("VerifyEmail")]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.VerifyEmailAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ResendVerification")]
+    public async Task<IActionResult> ResendVerification([FromBody] EmailOnlyDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ResendVerificationAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("AcceptInvite")]
+    public async Task<IActionResult> AcceptInvite([FromBody] AcceptInviteDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.AcceptInviteAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ForgotPassword")]
+    public async Task<IActionResult> ForgotPassword([FromBody] EmailOnlyDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ForgotPasswordAsync(dto, ct);
+        return FromResult(result);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("ResetPassword")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto, CancellationToken ct)
+    {
+        var result = await _verificationService.ResetPasswordAsync(dto, ct);
+        return FromResult(result);
+    }
+
     [Audit("Created a user")]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
     [HttpPost("CreateUser")]
-    public async Task<IActionResult> CreateUser([FromBody] RegisterDto dto, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateUser([FromBody] InviteUserDto dto, CancellationToken cancellationToken)
     {
         var result = await _accountService.CreateUserForCompanyAsync(dto, CompanyId, cancellationToken);
         return FromResult(result);

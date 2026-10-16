@@ -155,6 +155,53 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.AgentToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<DateTime?>("LastUsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("binary(32)")
+                        .IsFixedLength();
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AgentTokens_AgentUserId_Live")
+                        .HasFilter("[RevokedAtUtc] IS NULL");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("AgentTokens");
+                });
+
             modelBuilder.Entity("TaskSphere.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<int>("Id")
@@ -275,6 +322,9 @@ namespace TaskSphere.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPersonal")
                         .HasColumnType("bit");
 
                     b.Property<string>("Name")
@@ -665,6 +715,9 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsAgent")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -686,6 +739,9 @@ namespace TaskSphere.Infrastructure.Migrations
                     b.Property<string>("NormalizedUserName")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PasswordHash")
                         .HasColumnType("nvarchar(max)");
@@ -717,6 +773,10 @@ namespace TaskSphere.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
+
+                    b.HasIndex("OwnerUserId")
+                        .IsUnique()
+                        .HasFilter("[OwnerUserId] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -1110,6 +1170,17 @@ namespace TaskSphere.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaskSphere.Domain.Entities.AgentToken", b =>
+                {
+                    b.HasOne("TaskSphere.Domain.Entities.Identity.AppUser", "Agent")
+                        .WithMany()
+                        .HasForeignKey("AgentUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Agent");
+                });
+
             modelBuilder.Entity("TaskSphere.Domain.Entities.ChatMessage", b =>
                 {
                     b.HasOne("TaskSphere.Domain.Entities.Project", "Project")
@@ -1210,7 +1281,14 @@ namespace TaskSphere.Infrastructure.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("TaskSphere.Domain.Entities.Identity.AppUser", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Company");
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("TaskSphere.Domain.Entities.Member", b =>

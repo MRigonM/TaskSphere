@@ -2,6 +2,10 @@ import { Routes } from '@angular/router';
 import { HomeComponent } from './home/home.component';
 import { LoginComponent } from './account/login/login.component';
 import { RegisterComponent } from './account/register/register.component';
+import { VerifyEmailComponent } from './account/verify-email/verify-email.component';
+import { AcceptInviteComponent } from './account/accept-invite/accept-invite.component';
+import { ForgotPasswordComponent } from './account/forgot-password/forgot-password.component';
+import { ResetPasswordComponent } from './account/reset-password/reset-password.component';
 import { guestGuard } from './core/guards/guest.guard';
 import { UsersDashboardComponent } from './company-dashboard/users/users-dashboard.component';
 import { companyGuard } from './core/guards/company.guard';
@@ -14,11 +18,16 @@ import { ProjectSprintsComponent } from './company-dashboard/projects/project-sp
 import { AuditDashboardComponent } from './company-dashboard/audit/audit-dashboard.component';
 import { GitHubConnectionComponent } from './company-dashboard/github/github-connection.component';
 import { GitHubCallbackComponent } from './company-dashboard/github/github-callback.component';
+import { MyClaudeComponent } from './settings/my-claude/my-claude.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
   { path: 'account/login', component: LoginComponent, canActivate: [guestGuard] },
   { path: 'account/register', component: RegisterComponent, canActivate: [guestGuard] },
+  { path: 'account/verify-email', component: VerifyEmailComponent, canActivate: [guestGuard] },
+  { path: 'account/accept-invite', component: AcceptInviteComponent, canActivate: [guestGuard] },
+  { path: 'account/forgot-password', component: ForgotPasswordComponent, canActivate: [guestGuard] },
+  { path: 'account/reset-password', component: ResetPasswordComponent, canActivate: [guestGuard] },
   { path: 'dashboard/users', component: UsersDashboardComponent, canActivate: [companyGuard] },
   { path: 'dashboard/audit', component: AuditDashboardComponent, canActivate: [companyGuard] },
   { path: 'dashboard/github', component: GitHubConnectionComponent, canActivate: [companyGuard] },
@@ -28,5 +37,6 @@ export const routes: Routes = [
   { path: 'dashboard/projects/sprints/:projectId', component: ProjectSprintsComponent, canActivate: [companyGuard] },
   { path: 'sprints/:projectId', component: SprintsPageComponent, canActivate: [companyMemberGuard] },
   { path: 'tasks/:projectId', component: TasksPageComponent, canActivate: [companyMemberGuard] },
+  { path: 'settings/claude', component: MyClaudeComponent, canActivate: [companyMemberGuard] },
   { path: '**', redirectTo: '' },
 ];

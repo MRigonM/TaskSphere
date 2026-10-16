@@ -6,4 +6,10 @@ public class RegisterDto
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string ConfirmPassword { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A one-human workspace. Safe on this DTO because registration is its only user —
+    /// CreateUser binds InviteUserDto.
+    /// </summary>
+    public bool IsPersonal { get; set; }
 }

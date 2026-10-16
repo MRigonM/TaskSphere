@@ -29,6 +29,7 @@ public class AccountService : IAccountService
     private readonly IAccountVerificationService _verification;
     private readonly IEmailSender _emailSender;
     private readonly ClientOptions _client;
+    private readonly IAgentService _agents;
 
     public AccountService(
         UserManager<AppUser> userManager,
@@ -39,7 +40,8 @@ public class AccountService : IAccountService
         ICompanyService companyService,
         IAccountVerificationService verification,
         IEmailSender emailSender,
-        IOptions<ClientOptions> client)
+        IOptions<ClientOptions> client,
+        IAgentService agents)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -50,6 +52,7 @@ public class AccountService : IAccountService
         _verification = verification;
         _emailSender = emailSender;
         _client = client.Value;
+        _agents = agents;
     }
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
     {
@@ -118,7 +121,8 @@ public class AccountService : IAccountService
             if (!await _roleManager.RoleExistsAsync(Roles.Company))
                 await _roleManager.CreateAsync(new IdentityRole(Roles.Company));
 
-            var companyResult = await _companyService.CreateAsync(new CompanyDto { Name = dto.Name }, cancellationToken);
+            var companyResult = await _companyService.CreateAsync(
+                new CompanyDto { Name = dto.Name, IsPersonal = dto.IsPersonal }, cancellationToken);
             if (!companyResult.IsSuccess || companyResult.Value == null)
             {
                 _logger.LogWarning("Identity created but Company entity failed for {Email}", dto.Email);
@@ -137,6 +141,19 @@ public class AccountService : IAccountService
             }
 
             await _userManager.AddToRoleAsync(user, Roles.Company);
+
+            if (dto.IsPersonal)
+            {
+                var agent = await _agents.CreateForOwnerAsync(user.Id, cancellationToken);
+                if (!agent.IsSuccess)
+                {
+                    // Same compensation as the steps above. The company row is left behind, as
+                    // it is when the link step fails; registration is not transactional.
+                    _logger.LogWarning("Personal registration could not create the agent for {Email}", dto.Email);
+                    await _userManager.DeleteAsync(user);
+                    return Result<string>.Failure("Could not set up your Claude. Please try again.");
+                }
+            }
 
             _logger.LogInformation("Successfully registered Company with UserId: {UserId}, CompanyId: {CompanyId}", user.Id, user.CompanyId);
             // The account is kept whatever happens to the mail: a transient SMTP failure must not

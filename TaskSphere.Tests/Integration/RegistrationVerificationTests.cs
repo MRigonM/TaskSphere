@@ -119,6 +119,8 @@ internal sealed class RegistrationHarness
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<AccountVerificationService>.Instance);
 
+        var agents = new AgentService(Users, roles, unitOfWork, TimeProvider.System);
+
         Accounts = new AccountService(
             Users,
             IdentityTestHarness.NewSignInManager(Users),
@@ -133,6 +135,7 @@ internal sealed class RegistrationHarness
             companies,
             verification,
             sender,
-            Options.Create(new ClientOptions { BaseUrl = "http://localhost:4200" }));
+            Options.Create(new ClientOptions { BaseUrl = "http://localhost:4200" }),
+            agents);
     }
 }

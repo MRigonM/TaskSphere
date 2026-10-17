@@ -22,6 +22,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<RegisterValidator>();
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAgentAuthentication();
+builder.Services.AddTaskSphereRateLimiting(builder.Configuration);
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -52,6 +53,9 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseCors("AllowAngularApp");
 
 app.UseAuthentication();
+// After authentication, so a JWT or agent token is on HttpContext.User when the limiter picks a
+// key; before authorization, so a flood is refused before any endpoint work.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -57,7 +57,7 @@ describe('MyClaudeComponent', () => {
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('tsk_secret');
-    expect(text).toContain('claude mcp add --transport http tasksphere https://localhost:5001/mcp --header "Authorization: Bearer tsk_secret"');
+    expect(text).toContain('claude mcp add --transport http tasksphere http://localhost:5000/mcp --header "Authorization: Bearer tsk_secret"');
   });
 
   it('asks before replacing a live token, and does nothing if declined', () => {

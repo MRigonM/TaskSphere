@@ -18,7 +18,7 @@ export class MyClaudeComponent implements OnInit {
   busy = signal(false);
   error = signal<string | null>(null);
 
-  readonly mcpUrl = `${new URL(environment.apiUrl).origin}/mcp`;
+  readonly mcpUrl = environment.mcpUrl;
 
   constructor(private api: AgentsApiService) {}
 

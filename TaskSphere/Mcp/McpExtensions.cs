@@ -21,7 +21,8 @@ public static class McpExtensions
             .WithHttpTransport(options => options.Stateless = true)
             .WithTools<ProjectAndTaskReadTools>()
             .WithTools<TaskWriteTools>()
-            .WithTools<SprintTools>();
+            .WithTools<SprintTools>()
+            .WithTools<BranchTools>();
 
         return services;
     }

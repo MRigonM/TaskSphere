@@ -166,4 +166,122 @@ public class McpBranchToolTests : IAsyncLifetime
         Assert.Equal(branch.Id, link.GitHubBranchId);
         Assert.Equal(int.Parse(key.Split('-')[1]), (await verify.Tasks.SingleAsync(t => t.Id == link.TaskId)).Number);
     }
+
+    [Fact]
+    public async SystemTask.Task An_explicit_name_with_the_key_is_used_as_given()
+    {
+        var key = await CreateTaskAsync("Test per branch");
+        _github.OnGet("git/ref/heads/main", RefBody).OnPost("git/refs", "{}");
+
+        var (isError, text) = await Call("create_branch", new() { ["key"] = key, ["name"] = $" {key}/Test-per-branch " });
+
+        Assert.False(isError, text);
+        Assert.Contains($"refs/heads/{key}/Test-per-branch", Assert.Single(_github.Posts).Body);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_name_without_the_key_is_refused_before_github_is_written()
+    {
+        var key = await CreateTaskAsync("Keyless");
+        _github.OnGet("git/ref/heads/main", RefBody).OnPost("git/refs", "{}");
+
+        var (isError, text) = await Call("create_branch", new() { ["key"] = key, ["name"] = "fix/keyless" });
+
+        Assert.True(isError);
+        Assert.Contains($"has to contain {key}", text);
+        Assert.Empty(_github.Posts);
+    }
+
+    [Fact]
+    public async SystemTask.Task With_two_linked_repositories_the_named_one_gets_the_branch()
+    {
+        await LinkWebAsync();
+        var key = await CreateTaskAsync("Web work");
+        _github.OnGet("git/ref/heads/develop", "{\"object\":{\"sha\":\"devsha\"}}").OnPost("git/refs", "{}");
+
+        var (isError, text) = await Call("create_branch", new() { ["key"] = key, ["repository"] = "web" });
+
+        Assert.False(isError, text);
+        Assert.Contains("repos/rigon-org/web/git/refs", Assert.Single(_github.Posts).Url);
+        Assert.Contains("in rigon-org/web", text);
+    }
+
+    [Fact]
+    public async SystemTask.Task With_two_linked_repositories_and_none_named_it_lists_them()
+    {
+        await LinkWebAsync();
+        var key = await CreateTaskAsync("Which repo");
+
+        var (isError, text) = await Call("create_branch", new() { ["key"] = key });
+
+        Assert.True(isError);
+        Assert.Equal(
+            $"{key}'s project links more than one repository; pass repository. Linked repositories: rigon-org/api, rigon-org/web.",
+            text);
+        Assert.Empty(_github.Posts);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_branch_that_already_exists_is_reported_as_success()
+    {
+        var key = await CreateTaskAsync("Exists");
+        var branchName = $"{key}/exists";
+        _github
+            .OnGet("git/ref/heads/main", RefBody)
+            .OnGet($"git/ref/heads/{branchName}", "{\"object\":{\"sha\":\"branchsha\"}}")
+            .FailPost("git/refs", new Error(
+                "GitHub.UnprocessableEntity",
+                "GitHub returned 422 for https://api.github.com/repos/rigon-org/api/git/refs. Reference already exists"));
+
+        var (isError, text) = await Call("create_branch", new() { ["key"] = key });
+
+        Assert.False(isError, text);
+        Assert.Equal(
+            $"Branch {branchName} already existed in rigon-org/api; it is linked to {key}: https://github.com/rigon-org/api/tree/{branchName}",
+            text);
+    }
+
+    [Fact]
+    public async SystemTask.Task A_task_in_a_project_the_agent_is_not_in_is_refused_and_github_is_untouched()
+    {
+        // Seeded directly: the agent cannot create a task in OT through MCP.
+        await using (var db = NewContext())
+        {
+            db.Tasks.Add(new TaskSphere.Domain.Entities.Task
+            {
+                Title = "Not yours", Number = 1, ProjectId = _otherProjectId, CompanyId = _companyId,
+            });
+            await db.SaveChangesAsync();
+        }
+        await DrainAudit();
+
+        var (isError, _) = await Call("create_branch", new() { ["key"] = "OT-1" });
+
+        Assert.True(isError);
+        Assert.Empty(_github.Posts);
+        Assert.Empty(_github.GetUrls);
+        Assert.Equal(403, Assert.Single(await DrainAudit()).StatusCode);
+    }
+
+    [Fact]
+    public async SystemTask.Task Success_and_failure_are_both_audited_as_create_branch()
+    {
+        var key = await CreateTaskAsync("Audited");
+        _github.OnGet("git/ref/heads/main", RefBody).OnPost("git/refs", "{}");
+        await DrainAudit();
+
+        await Call("create_branch", new() { ["key"] = key });
+        await Call("create_branch", new() { ["key"] = key, ["name"] = "no-key-here" });
+
+        var entries = await DrainAudit();
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, e =>
+        {
+            Assert.Equal("Created a branch", e.Action);
+            Assert.Equal("/mcp/create_branch", e.Path);
+            Assert.Equal("Rigon's Claude", e.Username);
+        });
+        Assert.Equal(200, entries[0].StatusCode);
+        Assert.Equal(400, entries[1].StatusCode);
+    }
 }

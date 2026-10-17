@@ -11,11 +11,13 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IGitHubRepositorySyncService _syncService;
 
-    public GitHubConnectionReadService(IUnitOfWork unitOfWork, IMapper mapper)
+    public GitHubConnectionReadService(IUnitOfWork unitOfWork, IMapper mapper, IGitHubRepositorySyncService syncService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _syncService = syncService;
     }
 
     public async Task<Result<GitHubConnectionDto>> GetConnectionAsync(Guid companyId, CancellationToken cancellationToken = default)
@@ -39,6 +41,51 @@ public class GitHubConnectionReadService : IGitHubConnectionReadService
         return Result<GitHubConnectionDto>.Success(new GitHubConnectionDto(
             _mapper.Map<GitHubInstallationDto>(installation),
             _mapper.Map<List<GitHubRepositoryDto>>(repositories)));
+    }
+
+    /// <summary>
+    /// Deliberately has NO cooldown, unlike <c>ProjectActivityRefreshService</c> and
+    /// <c>TaskActivityRefreshService</c>, which throttle per repository because they fire from
+    /// opening a page — an event the user does not think of as spending anything.
+    /// <para>
+    /// This one fires only after the user has personally been to github.com and come back, so it
+    /// is already rate-limited by the slowest thing in the loop: a human round-tripping through
+    /// another site. Adding a timer here would mostly serve to refuse the refresh at the one
+    /// moment it is certainly warranted — immediately after they granted access to a repository.
+    /// </para>
+    /// <para>
+    /// The cost accepted: up to <c>MaxPages</c> listing calls per invocation against the
+    /// installation's shared hourly budget. Revisit if this ever becomes reachable from a page
+    /// load rather than from a return trip.
+    /// </para>
+    /// </summary>
+    public async Task<Result<GitHubConnectionDto>> RefreshRepositoriesAsync(
+        Guid companyId, CancellationToken cancellationToken = default)
+    {
+        var installation = await _unitOfWork.GitHubInstallations.GetByCompanyAsync(companyId, cancellationToken);
+
+        if (installation is null)
+            return Result<GitHubConnectionDto>.Failure(EntityError.NotFound("GitHub connection"));
+
+        var sync = await _syncService.SyncAsync(installation, cancellationToken);
+
+        // Propagated rather than swallowed: falling through to GetConnectionAsync would answer
+        // a failed refresh with the stale list and no indication anything went wrong.
+        // The whole list, not Errors[0]: ApiBaseController.MapErrors scans every error to choose
+        // the status code, so keeping only the first can downgrade a 403 to a 400.
+        if (!sync.IsSuccess)
+            return Result<GitHubConnectionDto>.Failure([.. sync.Errors]);
+
+        var refreshed = await GetConnectionAsync(companyId, cancellationToken);
+
+        // GetConnectionAsync answers "not connected" as an empty SUCCESS, which is the opposite
+        // of this method's contract. The two disagree whenever the installation goes away while
+        // the sync is in flight — a disconnect in another tab during a round-trip to GitHub.
+        // Without this the caller is told, successfully, that it has no repositories.
+        if (refreshed.IsSuccess && refreshed.Value!.Installation is null)
+            return Result<GitHubConnectionDto>.Failure(EntityError.NotFound("GitHub connection"));
+
+        return refreshed;
     }
 
     public async Task<Result> DisconnectAsync(Guid companyId, CancellationToken cancellationToken = default)

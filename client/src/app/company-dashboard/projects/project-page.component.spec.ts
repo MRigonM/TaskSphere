@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
@@ -9,12 +9,25 @@ import { ProjectPageComponent } from './project-page.component';
 import { ProjectsApiService } from './projects.service';
 import { AccountApiService } from '../../core/services/account-api.service';
 import { ToastService } from '../../core/services/toast.service';
+import { environment } from '../../../environments/environment';
 import { ProjectDto } from '../../core/models/projects.models';
 
 const project: ProjectDto = { id: 7, name: 'TaskSphere', key: 'TS', autoDoneOnMerge: false };
 
-function setup(current: ProjectDto = project) {
+/**
+ * `role` seeds the auth store the way the links screen's spec does — `AuthStoreService` reads
+ * localStorage at construction, so it has to be written before the TestBed builds the component.
+ * Left null the component renders as a signed-out page would: no admin-only reads at all.
+ */
+function setup(current: ProjectDto = project, role: 'Company' | 'User' | null = null) {
   const toast = { show: vi.fn() };
+
+  if (role) {
+    localStorage.setItem(
+      'tasksphere_auth',
+      JSON.stringify({ token: 'a.b.c', name: 'Rigon', role, companyId: 1, userId: 'u1' }),
+    );
+  }
 
   const projectsApi = {
     getAll: vi.fn().mockReturnValue(of([current])),
@@ -37,11 +50,38 @@ function setup(current: ProjectDto = project) {
     ],
   });
 
+  const http = TestBed.inject(HttpTestingController);
+
   const fixture: ComponentFixture<ProjectPageComponent> =
     TestBed.createComponent(ProjectPageComponent);
   fixture.detectChanges();
 
-  return { fixture, projectsApi, toast };
+  return { fixture, projectsApi, toast, http };
+}
+
+function flushProjectRepositories(
+  http: HttpTestingController,
+  body: { links: unknown[]; unavailableCount: number } = { links: [], unavailableCount: 0 },
+) {
+  http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush(body);
+}
+
+function flushConnection(
+  http: HttpTestingController,
+  repositorySelection: 0 | 1,
+  repositories: unknown[] = [],
+) {
+  http.expectOne(`${environment.apiUrl}GitHub/connection`).flush({
+    installation: {
+      id: 1,
+      installationId: 42,
+      accountLogin: 'acme-corp',
+      accountType: 'Organization',
+      repositorySelection,
+      isSuspended: false,
+    },
+    repositories,
+  });
 }
 
 function checkbox(fixture: ComponentFixture<ProjectPageComponent>): HTMLInputElement {
@@ -128,5 +168,229 @@ describe('ProjectPageComponent — the auto-done toggle', () => {
       'Merged pull requests will no longer move their task',
       'info',
     );
+  });
+});
+
+function becomeVisible() {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+describe('ProjectPageComponent — the repositories section', () => {
+  afterEach(() => {
+    // AuthStoreService reads this at construction, so a leaked role would silently change the
+    // role every later test in this run believes it is running as.
+    localStorage.removeItem('tasksphere_auth');
+    vi.restoreAllMocks();
+  });
+
+  it('lists the repositories linked to the project', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/api');
+  });
+
+  it('reports links whose repository is no longer available', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, { links: [], unavailableCount: 2 });
+    fixture.detectChanges();
+
+    // The count is the only thing the server can say about them, and saying nothing would make
+    // a link silently vanish.
+    const notice: HTMLElement = fixture.nativeElement.querySelector('[data-testid="unavailable-count"]');
+    expect(notice?.textContent).toContain('2');
+  });
+
+  it('offers only repositories that are not already linked, to an admin', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    flushConnection(http, 0, [
+      { id: 3, repositoryId: 300, fullName: 'acme-corp/api', defaultBranch: 'main', isPrivate: true },
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.linkable().map(r => r.fullName)).toEqual(['acme-corp/web']);
+  });
+
+  it('does not read the company connection for a member', () => {
+    const { http } = setup(project, 'User');
+
+    flushProjectRepositories(http);
+
+    // The connection endpoint is Company-gated, so a member requesting it earns a guaranteed
+    // 403 and an error message about something they cannot act on.
+    http.expectNone(`${environment.apiUrl}GitHub/connection`);
+    http.verify();
+  });
+
+  it('re-reads the links from the server after a successful link', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0, [
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.linkRepository(4);
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories`).flush({
+      id: 9, projectId: 7, gitHubRepositoryId: 4, fullName: 'acme-corp/web', linkedByUserId: 'u1',
+    });
+
+    // Refetched rather than patched: unavailableCount is derivable only server-side, so a local
+    // edit could leave the section stating something the server would contradict.
+    flushProjectRepositories(http, {
+      links: [
+        { id: 9, projectId: 7, gitHubRepositoryId: 4, fullName: 'acme-corp/web', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/web');
+    expect(fixture.componentInstance.linkable()).toEqual([]);
+    http.verify();
+  });
+
+  it('explains a failed unlink instead of dropping the row', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http, {
+      links: [
+        { id: 1, projectId: 7, gitHubRepositoryId: 3, fullName: 'acme-corp/api', linkedByUserId: 'u1' },
+      ],
+      unavailableCount: 0,
+    });
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    fixture.componentInstance.unlinkRepository(3);
+    http.expectOne(`${environment.apiUrl}GitHub/projects/7/repositories/3`).flush(
+      [{ code: 'GitHub.Failed', description: 'The link could not be removed.' }],
+      { status: 500, statusText: 'Server Error' },
+    );
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.repositoriesError()).toContain('could not be removed');
+    // The row is still there: nothing was removed, and hiding it would claim otherwise.
+    expect(fixture.nativeElement.textContent).toContain('acme-corp/api');
+    http.verify();
+  });
+
+  it('does not post a link when the placeholder option is chosen', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0, [
+      { id: 4, repositoryId: 400, fullName: 'acme-corp/web', defaultBranch: 'main', isPrivate: false },
+    ]);
+    fixture.detectChanges();
+
+    // The placeholder's value is '', which the template coerces to 0. Reachable after a failed
+    // link, where the selection deliberately stays put: re-picking "Link a repository…" would
+    // otherwise POST repositoryId 0 and report a second failure for a link nobody asked for.
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select[data-testid="link-repository"]');
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+
+    http.expectNone(`${environment.apiUrl}GitHub/projects/7/repositories`);
+    http.verify();
+  });
+
+  it('offers the GitHub link when the installation has only selected repositories', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0); // RepositorySelection.Selected
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.manageUrl()).toBe(
+      'https://github.com/organizations/acme-corp/settings/installations/42',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Manage repository access on GitHub');
+  });
+
+  it('offers no GitHub link when the installation already has every repository', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 1); // RepositorySelection.All
+    fixture.detectChanges();
+
+    // Nothing to grant over there — the list only needs refreshing.
+    expect(fixture.componentInstance.manageUrl()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Manage repository access on GitHub');
+  });
+
+  it('re-syncs the repositories once when the user returns from GitHub', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+
+    becomeVisible();
+
+    http.expectOne(`${environment.apiUrl}GitHub/repositories/sync`).flush({
+      installation: null,
+      repositories: [],
+    });
+    // The project's own links are re-read too: a newly granted repository is linkable, but the
+    // linked list is what the section renders.
+    flushProjectRepositories(http);
+    http.verify();
+  });
+
+  it('stops listening for the return once the page is destroyed', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+    fixture.destroy();
+
+    becomeVisible();
+
+    // returned$ never completes, so without takeUntilDestroyed a navigated-away page keeps
+    // syncing — and keeps winning the arm from whatever page the user is actually on.
+    http.expectNone(`${environment.apiUrl}GitHub/repositories/sync`);
+    http.verify();
+  });
+
+  it('does not sync on a refocus the user never armed', () => {
+    const { fixture, http } = setup(project, 'Company');
+
+    flushProjectRepositories(http);
+    flushConnection(http, 0);
+    fixture.detectChanges();
+
+    // An ordinary alt-tab back to the app. Spending a GitHub call here is exactly what the arm
+    // exists to prevent.
+    becomeVisible();
+
+    http.expectNone(`${environment.apiUrl}GitHub/repositories/sync`);
+    http.verify();
   });
 });

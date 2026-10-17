@@ -1,10 +1,11 @@
-﻿import { describe, it, expect, afterEach } from 'vitest';
+﻿import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { GitHubRepositoryLinksComponent } from './github-repository-links.component';
 import { environment } from '../../../environments/environment';
 import { CompanyRepositoryLinksDto } from '../../core/models/github.models';
+import { GitHubConnectionService } from '../../core/services/github-connection.service';
 import { ProjectDto } from '../../core/models/projects.models';
 
 const projects: ProjectDto[] = [
@@ -123,6 +124,31 @@ function repositoryNames(fixture: { nativeElement: HTMLElement }): string[] {
   );
 }
 
+/**
+ * The connection is loaded by the PARENT (github-connection.component.ts:38) — this component
+ * only ever renders inside it. A bare TestBed leaves the shared signal null, so anything reading
+ * `manageUrl()` has to seed it the way github-connection.component.spec.ts does.
+ */
+function seedConnection(http: HttpTestingController, repositorySelection: 0 | 1 = 0) {
+  TestBed.inject(GitHubConnectionService).loadConnection().subscribe();
+  http.expectOne(`${environment.apiUrl}GitHub/connection`).flush({
+    installation: {
+      id: 1,
+      installationId: 42,
+      accountLogin: 'acme-corp',
+      accountType: 'Organization',
+      repositorySelection,
+      isSuspended: false,
+    },
+    repositories: [],
+  });
+}
+
+function becomeVisible() {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 describe('GitHubRepositoryLinksComponent', () => {
   afterEach(() => {
     try {
@@ -130,6 +156,7 @@ describe('GitHubRepositoryLinksComponent', () => {
     } finally {
       TestBed.resetTestingModule();
       localStorage.removeItem('tasksphere_auth');
+      vi.restoreAllMocks();
     }
   });
 
@@ -477,5 +504,51 @@ describe('GitHubRepositoryLinksComponent', () => {
 
     expect(fixture.nativeElement.textContent).not.toContain('The links could not be read.');
     expect(chipKeys(fixture, 'acme-corp/api')).toEqual(['APO', 'BOR']);
+  });
+
+  it('re-syncs and reloads the table when the user returns from GitHub', async () => {
+    const { fixture, http } = await setup();
+
+    seedConnection(http);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+
+    becomeVisible();
+
+    http.expectOne(`${environment.apiUrl}GitHub/repositories/sync`).flush({
+      installation: null,
+      repositories: [],
+    });
+    http.expectOne(`${environment.apiUrl}GitHub/links`).flush(links);
+    await fixture.whenStable();
+  });
+
+  it('offers nothing to manage when the installation already has every repository', async () => {
+    const { fixture, http } = await setup();
+
+    seedConnection(http, 1); // RepositorySelection.All
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.manageUrl()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Manage repository access on GitHub');
+  });
+
+  it('stops listening for the return once the screen is destroyed', async () => {
+    const { fixture, http } = await setup();
+
+    seedConnection(http);
+    fixture.detectChanges();
+
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    fixture.componentInstance.openGitHubSettings();
+    fixture.destroy();
+
+    becomeVisible();
+
+    // returned$ never completes: without takeUntilDestroyed this screen keeps syncing after the
+    // user has navigated away, and keeps consuming the arm meant for wherever they are now.
+    http.expectNone(`${environment.apiUrl}GitHub/repositories/sync`);
   });
 });

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using TaskSphere.Hubs;
 using TaskSphere.RateLimiting;
 
 namespace TaskSphere.Extensions;
@@ -13,6 +14,7 @@ public static class RateLimitingExtensions
             ?? new RateLimitingOptions();
 
         services.AddSingleton(limits);
+        services.AddSingleton<ChatRateLimitFilter>();
 
         services.AddRateLimiter(options =>
         {

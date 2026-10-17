@@ -1,8 +1,10 @@
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.SignalR;
 using TaskSphere.Application.Validators.Identity;
 using TaskSphere.Authentication;
 using TaskSphere.Extensions;
+using TaskSphere.Hubs;
 using TaskSphere.Mcp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,7 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(o => o.AddFilter<ChatRateLimitFilter>());
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddFluentValidationClientsideAdapters();

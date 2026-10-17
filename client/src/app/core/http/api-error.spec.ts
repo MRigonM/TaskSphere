@@ -125,4 +125,24 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage(null, 'fallback')).toBe('fallback');
     expect(apiErrorMessage(undefined, 'fallback')).toBe('fallback');
   });
+
+  it('reads the rate limiter 429 body', () => {
+    // RateLimitingExtensions.WriteRejectionAsync writes the same [{code, description}] shape.
+    const err = {
+      status: 429,
+      error: [{ code: 'RateLimit.Exceeded', description: 'Too many requests. Try again in 42 seconds.' }],
+    };
+
+    expect(apiErrorMessage(err, 'fallback')).toBe('Too many requests. Try again in 42 seconds.');
+  });
+
+  it('reads the rate limiter 429 body on a text-typed Account request', () => {
+    // Account endpoints post with responseType: 'text', so the body arrives as JSON text.
+    const err = {
+      status: 429,
+      error: '[{"code":"RateLimit.Exceeded","description":"Too many requests. Try again in 42 seconds."}]',
+    };
+
+    expect(apiErrorMessage(err, 'fallback')).toBe('Too many requests. Try again in 42 seconds.');
+  });
 });

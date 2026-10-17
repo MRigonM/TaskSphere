@@ -4,6 +4,7 @@ import { Observable, catchError, map, of } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { environment } from '../../../environments/environment';
 import { AuthStoreService } from './auth-store.service';
+import { ToastService } from './toast.service';
 import { ChatMessageDto, PagedResult } from '../models/chat.models';
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +19,7 @@ export class ChatService {
   constructor(
     private http: HttpClient,
     private authStore: AuthStoreService,
+    private toast: ToastService,
   ) {}
 
   connect(projectId: number): void {
@@ -70,7 +72,9 @@ export class ChatService {
     const projectId = this.currentProjectId();
     if (!this.hubConnection || !projectId) return;
 
-    this.hubConnection.invoke('SendMessage', { projectId, content, imageUrl: imageUrl ?? null });
+    this.hubConnection
+      .invoke('SendMessage', { projectId, content, imageUrl: imageUrl ?? null })
+      .catch((err) => this.toast.show(refusalMessage(err), 'error'));
   }
 
   uploadImage(file: File): Observable<{ url: string }> {
@@ -95,4 +99,15 @@ export class ChatService {
       },
     });
   }
+}
+
+/**
+ * The SignalR client prefixes a HubException's text with its own sentence; only the part after
+ * "HubException: " was written for the user.
+ */
+function refusalMessage(err: unknown): string {
+  const marker = 'HubException: ';
+  const text = err instanceof Error ? err.message : String(err ?? '');
+  const at = text.indexOf(marker);
+  return at >= 0 ? text.slice(at + marker.length) : 'Your message could not be sent.';
 }

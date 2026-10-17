@@ -36,6 +36,12 @@ public static class ApplicationServices
                 options.Password.RequireDigit = true;
                 options.Password.RequireNonAlphanumeric = true;
                 options.Password.RequireLowercase = true;
+
+                // Short on purpose: anyone who knows an address can lock it. Five minutes stops a
+                // slow guess at one account without making a deliberate lockout worth much.
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+                options.Lockout.AllowedForNewUsers = true;
             })
             .AddEntityFrameworkStores<ApplicationDbContext>()
             .AddDefaultTokenProviders();

@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TaskSphere.Application.Interfaces;
 using TaskSphere.Domain.DataTransferObjects.Identity;
 using TaskSphere.Domain.Enums;
 using TaskSphere.Filters;
+using TaskSphere.RateLimiting;
 
 namespace TaskSphere.Controllers;
 
@@ -22,6 +24,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("Register")]
     public async Task<IActionResult> Register([FromBody] RegisterDto dto, CancellationToken cancellationToken)
     {
@@ -30,6 +33,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Login)]
     [HttpPost("Login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto, CancellationToken cancellationToken)
     {
@@ -38,6 +42,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("VerifyEmail")]
     public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailDto dto, CancellationToken ct)
     {
@@ -46,6 +51,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("ResendVerification")]
     public async Task<IActionResult> ResendVerification([FromBody] EmailOnlyDto dto, CancellationToken ct)
     {
@@ -54,6 +60,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("AcceptInvite")]
     public async Task<IActionResult> AcceptInvite([FromBody] AcceptInviteDto dto, CancellationToken ct)
     {
@@ -62,6 +69,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("ForgotPassword")]
     public async Task<IActionResult> ForgotPassword([FromBody] EmailOnlyDto dto, CancellationToken ct)
     {
@@ -70,6 +78,7 @@ public class AccountController : ApiBaseController
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Account)]
     [HttpPost("ResetPassword")]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto, CancellationToken ct)
     {
@@ -80,6 +89,7 @@ public class AccountController : ApiBaseController
     [Audit("Created a user")]
     [Authorize(Roles = Roles.Company)]
     [RequireCompany]
+    [EnableRateLimiting(RateLimitPolicies.Invite)]
     [HttpPost("CreateUser")]
     public async Task<IActionResult> CreateUser([FromBody] InviteUserDto dto, CancellationToken cancellationToken)
     {

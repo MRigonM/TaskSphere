@@ -28,6 +28,9 @@ internal static class IdentityTestHarness
         options.Value.Password.RequireDigit = true;
         options.Value.Password.RequireNonAlphanumeric = true;
         options.Value.Password.RequireLowercase = true;
+        options.Value.Lockout.MaxFailedAccessAttempts = 5;
+        options.Value.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+        options.Value.Lockout.AllowedForNewUsers = true;
 
         var services = new ServiceCollection().AddLogging().AddDataProtection().Services.BuildServiceProvider();
 

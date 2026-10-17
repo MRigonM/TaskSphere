@@ -62,7 +62,15 @@ public class AccountService : IAccountService
             if (user == null)
                 return Result<AuthResponseDto>.Failure("Invalid email or password.");
 
-            var result = await _signInManager.CheckPasswordSignInAsync(user, dto.Password, false);
+            var result = await _signInManager.CheckPasswordSignInAsync(user, dto.Password, lockoutOnFailure: true);
+
+            // Before the generic answer: a locked account must say so, or the user keeps trying
+            // a right password and never learns why it fails.
+            if (result.IsLockedOut)
+                return Result<AuthResponseDto>.Failure(new Error(
+                    "Auth.LockedOut",
+                    "Too many failed attempts. Try again in a few minutes."));
+
             if (!result.Succeeded)
                 return Result<AuthResponseDto>.Failure("Invalid email or password.");
 

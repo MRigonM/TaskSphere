@@ -15,7 +15,6 @@ import { AuthStoreService } from '../../core/services/auth-store.service';
 import { GitHubConnectionService } from '../../core/services/github-connection.service';
 import { GitHubProjectLinkService } from '../../core/services/github-project-link.service';
 import { ToastService } from '../../core/services/toast.service';
-import { AuthStoreService } from '../../core/services/auth-store.service';
 
 import { UserDto, UserQueryDto } from '../../core/models/account.models';
 import { ProjectRepositoriesDto } from '../../core/models/github.models';
@@ -39,7 +38,6 @@ export class ProjectPageComponent {
   members = signal<MemberDto[]>([]);
   selectedUserId = '';
 
-  auth = inject(AuthStoreService);
   private linkService = inject(GitHubProjectLinkService);
   private github = inject(GitHubConnectionService);
   private returnSync = inject(GitHubReturnSyncService);

@@ -45,7 +45,8 @@ internal sealed class McpTestHost : IAsyncDisposable
         Http = app.GetTestClient();
     }
 
-    public static async Task<McpTestHost> StartAsync(string connectionString)
+    public static async Task<McpTestHost> StartAsync(
+        string connectionString, Action<IServiceCollection>? configure = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
@@ -71,12 +72,17 @@ internal sealed class McpTestHost : IAsyncDisposable
         s.AddScoped<ISprintService, SprintService>();
         s.AddScoped<IProjectService, ProjectService>();
         s.AddScoped<IAgentService, AgentService>();
+        // create_branch. IGitHubApiClient is left to the test (configure), so no test can reach
+        // the real GitHub; a test that calls create_branch without one fails on resolution.
+        s.AddScoped<IGitHubTaskLinkResolver, GitHubTaskLinkResolver>();
+        s.AddScoped<IGitHubBranchService, GitHubBranchService>();
         s.AddSingleton(TimeProvider.System);
         s.AddSingleton<AuditQueue>();
 
         s.AddJwtAuthentication(builder.Configuration);
         s.AddAgentAuthentication();
         s.AddTaskSphereMcp();
+        configure?.Invoke(s);
 
         var app = builder.Build();
         app.UseAuthentication();
